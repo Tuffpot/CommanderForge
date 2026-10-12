@@ -221,16 +221,19 @@ function priceOf(name, cardData, priceSource) {
 
 const UNKNOWN_PRICE_ESTIMATE = 2; // used only when a card with no price data must be added under a budget
 
-// Orders candidates cheapest-first (budget mode) or priciest-first (no budget).
+// Orders candidates priciest-first (no budget, favoring strong staples) or,
+// under an active budget, purely by popularity — letting pickWithinBudget
+// spend up toward the budget on the best/most popular affordable cards,
+// rather than always grabbing the cheapest option in the pool.
 function orderCandidates(list, cardData, priceSource, preferExpensive) {
   const shuffled = popularityWeightedShuffle(list);
-  if (priceSource === "none") return shuffled;
+  if (priceSource === "none" || !preferExpensive) return shuffled;
   return shuffled.sort((a, b) => {
     const pa = priceOf(a.name, cardData, priceSource);
     const pb = priceOf(b.name, cardData, priceSource);
-    const va = pa == null ? (preferExpensive ? -1 : Infinity) : pa;
-    const vb = pb == null ? (preferExpensive ? -1 : Infinity) : pb;
-    return preferExpensive ? vb - va : va - vb;
+    const va = pa == null ? -1 : pa;
+    const vb = pb == null ? -1 : pb;
+    return vb - va;
   });
 }
 

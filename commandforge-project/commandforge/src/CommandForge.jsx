@@ -18,6 +18,7 @@ const ARCHETYPE_KEYWORDS = [
   ["ninjas", ["ninjutsu"]],
   ["enchantments", ["enchantment you control", "constellation"]],
   ["bigmana", ["additional land", "search your library for a basic land", "extra land"]],
+  ["lifegain", ["gain life", "whenever you gain life", "lifelink"]],
 ];
 
 function guessArchetype(oracleText) {
@@ -65,11 +66,13 @@ function buildNameQuery(name) {
   return trimmed ? `is:commander (${trimmed})` : "is:commander";
 }
 
-function buildColorQuery(colorFilter, houseName) {
+function buildColorQuery(colorFilter, houseName, theme) {
   let colors = colorFilter;
   const houseMatch = HOUSE_NAMES[houseName.trim().toLowerCase()];
   if (houseMatch) colors = houseMatch;
-  return colors.length ? `is:commander id=${colors.join("").toLowerCase()}` : "is:commander";
+  let q = colors.length ? `is:commander id=${colors.join("").toLowerCase()}` : "is:commander";
+  if (theme && ARCHETYPE_QUERIES[theme]) q += ` ${ARCHETYPE_QUERIES[theme]}`;
+  return q;
 }
 
 /* ---------------------------------------------------------
@@ -111,7 +114,39 @@ const ARCHETYPE_QUERIES = {
   ninjas: "o:ninjutsu",
   enchantments: 'o:"enchantment you control"',
   bigmana: '(o:"additional land" or o:"search your library for a basic land")',
+  lifegain: '(o:"gain life" or o:"whenever you gain life" or o:lifelink)',
 };
+
+// User-facing theme picker for the color-randomizer path — lets someone get a
+// random commander that's still guaranteed to fit a theme they actually want,
+// rather than a totally blind random pick.
+const THEME_OPTIONS = [
+  { id: "", label: "Any theme" },
+  { id: "aristocrats", label: "Aristocrats / Sacrifice" },
+  { id: "tokens", label: "Tokens" },
+  { id: "spellslinger", label: "Spellslinger" },
+  { id: "graveyard", label: "Graveyard / Reanimator" },
+  { id: "counters", label: "+1/+1 Counters" },
+  { id: "wheels", label: "Wheels / Card Draw" },
+  { id: "ninjas", label: "Ninjas" },
+  { id: "enchantments", label: "Enchantments" },
+  { id: "bigmana", label: "Big Mana / Ramp" },
+  { id: "lifegain", label: "Lifegain" },
+];
+
+// A short plain-English summary of what kind of deck just got built, shown
+// at the top of the result screen.
+function describeDeck(deck) {
+  if (!deck) return "";
+  const styleText = deck.style === "edhrec" ? "An EDHREC-inspired build" : "A randomly assembled build";
+  const archetypeKey = deck.theme || deck.commander.archetype;
+  const themeLabel = archetypeKey && THEME_OPTIONS.find((t) => t.id === archetypeKey)?.label;
+  const themeText = themeLabel ? ` leaning into a ${themeLabel} theme` : "";
+  const colorsText = deck.commander.identity.length
+    ? ` in ${houseNameForColors(deck.commander.identity)} colors`
+    : " with no color identity";
+  return `${styleText} around ${deck.commander.name}${themeText}, aimed at Bracket ${deck.bracket.id} (${deck.bracket.name}) power level${colorsText}.`;
+}
 
 function categoryQuery(cat, identity, commander, style) {
   const idPart = `id<=${identity.join("").toLowerCase() || "c"}`;
@@ -582,6 +617,7 @@ export default function CommandForge() {
   const [inspired, setInspired] = useState(false);
   const [colorFilter, setColorFilter] = useState([]);
   const [houseName, setHouseName] = useState("");
+  const [theme, setTheme] = useState("");
   const [deck, setDeck] = useState(null);
   const [savedDecks, setSavedDecks] = useState([]);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
@@ -727,7 +763,7 @@ export default function CommandForge() {
     const handle = setTimeout(async () => {
       setColorMatchLoading(true);
       try {
-        const { total } = await scryfallSearchCommanders(buildColorQuery(colorFilter, houseName));
+        const { total } = await scryfallSearchCommanders(buildColorQuery(colorFilter, houseName, theme));
         setColorMatchCount(total);
       } catch {
         setColorMatchError(true);
@@ -738,7 +774,7 @@ export default function CommandForge() {
     }, 350);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colorFilter, houseName]);
+  }, [colorFilter, houseName, theme]);
 
   function toggleColor(c) {
     setColorFilter((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
@@ -787,17 +823,22 @@ export default function CommandForge() {
   // builds the deck against real prices, then reuses that same data to show
   // images/prices/total on the result screen — all triggered by the click,
   // not preloaded before the person has even picked a commander.
-  async function forgeWith(commander, activeBracket) {
+  async function forgeWith(commander, activeBracket, usedTheme = null) {
     setIsForging(true);
     setCardDataStatus("loading");
     try {
-      const built = await buildDeck(commander, inspired ? "edhrec" : "random", activeBracket, {
+      // A chosen theme is as strong a signal as the EDHREC-inspired toggle
+      // that the supporting 99 should lean into a specific archetype, so it
+      // forces archetype-aware building even if that toggle is off.
+      const buildStyle = inspired || usedTheme ? "edhrec" : "random";
+      const built = await buildDeck(commander, buildStyle, activeBracket, {
         budget: parsedBudget,
         priceSource,
       });
       setDeck({
         commander,
         style: inspired ? "edhrec" : "random",
+        theme: usedTheme,
         bracket: activeBracket,
         budgetTarget: parsedBudget,
         picks: built.picks,
@@ -836,14 +877,17 @@ export default function CommandForge() {
     setRandomizeError(false);
     setIsForging(true);
     try {
-      const commander = await scryfallRandomCommander(buildColorQuery(colorFilter, houseName));
+      const commander = await scryfallRandomCommander(buildColorQuery(colorFilter, houseName, theme));
       if (!commander) {
         setRandomizeError(true);
         setIsForging(false);
         return;
       }
+      // The commander was explicitly searched for this theme, so trust it
+      // over the keyword-guessed archetype when picking synergy cards.
+      if (theme) commander.archetype = theme;
       setSelectedCommander(commander);
-      await forgeWith(commander, bracket);
+      await forgeWith(commander, bracket, theme);
     } catch {
       setRandomizeError(true);
       setIsForging(false);
@@ -1217,6 +1261,23 @@ export default function CommandForge() {
                     : houseNameForColors(colorFilter)}
                 </p>
 
+                <div className="mb-4">
+                  <label className="block text-[11px] text-white/40 uppercase tracking-wide font-semibold mb-1.5">
+                    Deck theme (optional)
+                  </label>
+                  <select
+                    value={theme}
+                    onChange={(e) => setTheme(e.target.value)}
+                    className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-3 text-sm text-white outline-none focus:border-[#E3B25C]/60"
+                  >
+                    {THEME_OPTIONS.map((t) => (
+                      <option key={t.id} value={t.id} className="bg-[#1a1225]">
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="rounded-xl bg-black/30 border border-white/10 px-4 py-3 mb-4">
                   <p className="text-[11px] text-white/40 uppercase tracking-wide font-semibold mb-1">This will also use</p>
                   <p className="text-xs text-white/70 leading-relaxed">
@@ -1224,6 +1285,11 @@ export default function CommandForge() {
                     {priceSource !== "none" && (
                       <>
                         {" · "}Budget: <span className="text-white font-semibold">{parsedBudget ? formatPrice(parsedBudget, priceSource) : "no limit"}</span>
+                      </>
+                    )}
+                    {theme && (
+                      <>
+                        {" · "}Theme: <span className="text-white font-semibold">{THEME_OPTIONS.find((t) => t.id === theme)?.label}</span>
                       </>
                     )}
                   </p>
@@ -1298,6 +1364,10 @@ export default function CommandForge() {
                     )}
                   </div>
                 </div>
+
+                <p className="text-sm text-white/70 leading-relaxed mt-4 pt-4 border-t border-white/10">
+                  {describeDeck(deck)}
+                </p>
 
                 {priceSource !== "none" && (
                   <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">

@@ -30,7 +30,7 @@ function guessArchetype(oracleText) {
 function mapScryfallCardToCommander(card) {
   const faceImages = card.image_uris || card.card_faces?.[0]?.image_uris || null;
   const oracleText = card.oracle_text || card.card_faces?.map((f) => f.oracle_text).filter(Boolean).join("\n\n") || null;
-  const typeLine = (card.card_faces?.[0]?.type_line || card.type_line || "").replace(/^Legendary /, "");
+  const typeLine = card.card_faces?.[0]?.type_line || card.type_line || "";
   return {
     name: card.name,
     identity: card.color_identity || [],

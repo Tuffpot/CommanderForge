@@ -63,7 +63,26 @@ async function scryfallRandomCommander(query) {
 
 function buildNameQuery(name) {
   const trimmed = name.trim();
-  return trimmed ? `is:commander (${trimmed})` : "is:commander";
+  // Restricted to the name field specifically — Scryfall's default bare-word
+  // search also matches type lines and oracle text, which was letting
+  // unrelated commanders (e.g. Atraxa) show up for an unrelated name search.
+  return trimmed ? `is:commander name:"${trimmed.replace(/"/g, "")}"` : "is:commander";
+}
+
+// Client-side safety net on top of buildNameQuery: only keep results whose
+// name actually contains what was typed, with names that start with it
+// ranked first — the "autocomplete" feel the name search should have.
+function filterAndSortByName(cards, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return cards;
+  return cards
+    .filter((c) => c.name.toLowerCase().includes(q))
+    .sort((a, b) => {
+      const aStarts = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+      const bStarts = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+      if (aStarts !== bStarts) return aStarts - bStarts;
+      return a.name.localeCompare(b.name);
+    });
 }
 
 function buildColorQuery(colorFilter, houseName, theme) {
@@ -71,7 +90,8 @@ function buildColorQuery(colorFilter, houseName, theme) {
   const houseMatch = HOUSE_NAMES[houseName.trim().toLowerCase()];
   if (houseMatch) colors = houseMatch;
   let q = colors.length ? `is:commander id=${colors.join("").toLowerCase()}` : "is:commander";
-  if (theme && ARCHETYPE_QUERIES[theme]) q += ` ${ARCHETYPE_QUERIES[theme]}`;
+  const themeQuery = resolveThemeQuery(theme);
+  if (themeQuery) q += ` ${themeQuery}`;
   return q;
 }
 
@@ -117,21 +137,32 @@ const ARCHETYPE_QUERIES = {
   lifegain: '(o:"gain life" or o:"whenever you gain life" or o:lifelink)',
 };
 
-// User-facing theme picker for the color-randomizer path — lets someone get a
-// random commander that's still guaranteed to fit a theme they actually want,
-// rather than a totally blind random pick.
-const THEME_OPTIONS = [
-  { id: "", label: "Any theme" },
-  { id: "aristocrats", label: "Aristocrats / Sacrifice" },
-  { id: "tokens", label: "Tokens" },
-  { id: "spellslinger", label: "Spellslinger" },
-  { id: "graveyard", label: "Graveyard / Reanimator" },
-  { id: "counters", label: "+1/+1 Counters" },
-  { id: "wheels", label: "Wheels / Card Draw" },
-  { id: "ninjas", label: "Ninjas" },
-  { id: "enchantments", label: "Enchantments" },
-  { id: "bigmana", label: "Big Mana / Ramp" },
-  { id: "lifegain", label: "Lifegain" },
+function normalizeThemeKey(text) {
+  return (text || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+// Free-text theme search for the color-randomizer path. If what was typed
+// matches one of our curated archetypes (lifegain, tokens, aristocrats…) it
+// uses that more accurate query; otherwise it falls back to a plain Scryfall
+// text search so the person isn't limited to a fixed list of themes at all.
+function resolveThemeQuery(themeText) {
+  const trimmed = (themeText || "").trim();
+  if (!trimmed) return null;
+  const curated = ARCHETYPE_QUERIES[normalizeThemeKey(trimmed)];
+  if (curated) return curated;
+  // No curated match — fall back to a plain search for the typed phrase in
+  // either the card's rules text or its type line (catches tribal themes
+  // like "dragons" or "elves" as well as mechanical ones).
+  const escaped = trimmed.replace(/"/g, "");
+  return `(o:"${escaped}" or t:"${escaped}")`;
+}
+
+// A handful of starting points shown as quick-pick chips under the free-text
+// theme field — clicking one just fills the box, it doesn't limit what can
+// be typed there.
+const THEME_SUGGESTIONS = [
+  "Lifegain", "Aristocrats", "Tokens", "Spellslinger", "Graveyard",
+  "+1/+1 Counters", "Wheels", "Ninjas", "Enchantments", "Big Mana", "Dragons", "Voltron",
 ];
 
 // A short plain-English summary of what kind of deck just got built, shown
@@ -139,22 +170,22 @@ const THEME_OPTIONS = [
 function describeDeck(deck) {
   if (!deck) return "";
   const styleText = deck.style === "edhrec" ? "An EDHREC-inspired build" : "A randomly assembled build";
-  const archetypeKey = deck.theme || deck.commander.archetype;
-  const themeLabel = archetypeKey && THEME_OPTIONS.find((t) => t.id === archetypeKey)?.label;
-  const themeText = themeLabel ? ` leaning into a ${themeLabel} theme` : "";
+  const themeText = deck.theme ? ` leaning into a ${deck.theme} theme` : "";
   const colorsText = deck.commander.identity.length
     ? ` in ${houseNameForColors(deck.commander.identity)} colors`
     : " with no color identity";
   return `${styleText} around ${deck.commander.name}${themeText}, aimed at Bracket ${deck.bracket.id} (${deck.bracket.name}) power level${colorsText}.`;
 }
 
-function categoryQuery(cat, identity, commander, style) {
+function categoryQuery(cat, identity, commander, style, themeQuery) {
   const idPart = `id<=${identity.join("").toLowerCase() || "c"}`;
   const base = `f:commander ${idPart} -t:land`;
   if (cat === "wincon") return `${base} ${WINCON_QUERY}`;
   if (cat === "utility") return `${base} ${UTILITY_QUERY}`;
   if (cat === "synergy") {
-    const archQuery = style === "edhrec" && commander.archetype && ARCHETYPE_QUERIES[commander.archetype];
+    // An explicit typed-in theme takes priority over the keyword-guessed
+    // archetype — it's a deliberate choice, not a best-effort guess.
+    const archQuery = themeQuery || (style === "edhrec" && commander.archetype && ARCHETYPE_QUERIES[commander.archetype]);
     return archQuery ? `${base} ${archQuery}` : base;
   }
   return `${base} ${CATEGORY_TAGS[cat]}`;
@@ -316,7 +347,7 @@ function pullStaples(candidates, names) {
 }
 
 async function buildDeck(commander, style, bracket, opts = {}) {
-  const { budget = null, priceSource = "none" } = opts;
+  const { budget = null, priceSource = "none", themeQuery = null } = opts;
   const identity = commander.identity;
   const recipe = bracket.recipe;
   const usedNames = new Set([commander.name.toLowerCase()]);
@@ -326,7 +357,7 @@ async function buildDeck(commander, style, bracket, opts = {}) {
 
   const catKeys = Object.keys(recipe);
   const [categoryResults, nonbasicRaw] = await Promise.all([
-    Promise.all(catKeys.map((cat) => scryfallSearchCards(categoryQuery(cat, identity, commander, style)).catch(() => []))),
+    Promise.all(catKeys.map((cat) => scryfallSearchCards(categoryQuery(cat, identity, commander, style, themeQuery)).catch(() => []))),
     scryfallSearchCards(`f:commander id<=${identity.join("").toLowerCase() || "c"} t:land -t:basic`).catch(() => []),
   ]);
 
@@ -743,8 +774,9 @@ export default function CommandForge() {
       setSearchLoading(true);
       try {
         const { cards } = await scryfallSearchCommanders(buildNameQuery(search));
-        setSearchResults(cards);
-        const exact = cards.find((c) => c.name.toLowerCase() === search.trim().toLowerCase());
+        const filtered = filterAndSortByName(cards, search);
+        setSearchResults(filtered);
+        const exact = filtered.find((c) => c.name.toLowerCase() === search.trim().toLowerCase());
         if (exact) setSelectedCommander(exact);
       } catch {
         setSearchError(true);
@@ -786,9 +818,10 @@ export default function CommandForge() {
     setSearchLoading(true);
     try {
       const { cards } = await scryfallSearchCommanders(buildNameQuery(query));
-      setSearchResults(cards);
-      const exact = cards.find((c) => c.name.toLowerCase() === query.toLowerCase());
-      const resolved = selectedCommander || exact || cards[0];
+      const filtered = filterAndSortByName(cards, query);
+      setSearchResults(filtered);
+      const exact = filtered.find((c) => c.name.toLowerCase() === query.toLowerCase());
+      const resolved = selectedCommander || exact || filtered[0];
       if (!resolved) return;
       setSelectedCommander(resolved);
       setSearch(resolved.name);
@@ -834,6 +867,7 @@ export default function CommandForge() {
       const built = await buildDeck(commander, buildStyle, activeBracket, {
         budget: parsedBudget,
         priceSource,
+        themeQuery: usedTheme ? resolveThemeQuery(usedTheme) : null,
       });
       setDeck({
         commander,
@@ -883,9 +917,6 @@ export default function CommandForge() {
         setIsForging(false);
         return;
       }
-      // The commander was explicitly searched for this theme, so trust it
-      // over the keyword-guessed archetype when picking synergy cards.
-      if (theme) commander.archetype = theme;
       setSelectedCommander(commander);
       await forgeWith(commander, bracket, theme);
     } catch {
@@ -1263,19 +1294,26 @@ export default function CommandForge() {
 
                 <div className="mb-4">
                   <label className="block text-[11px] text-white/40 uppercase tracking-wide font-semibold mb-1.5">
-                    Deck theme (optional)
+                    Deck theme (optional) — type anything
                   </label>
-                  <select
+                  <input
                     value={theme}
                     onChange={(e) => setTheme(e.target.value)}
-                    className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-3 text-sm text-white outline-none focus:border-[#E3B25C]/60"
-                  >
-                    {THEME_OPTIONS.map((t) => (
-                      <option key={t.id} value={t.id} className="bg-[#1a1225]">
-                        {t.label}
-                      </option>
+                    placeholder="e.g. lifegain, voltron, dragons, mill…"
+                    className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-3 text-sm text-white placeholder-white/35 outline-none focus:border-[#E3B25C]/60"
+                  />
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {THEME_SUGGESTIONS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setTheme(s)}
+                        className="text-[11px] px-2.5 py-1 rounded-full border border-white/15 text-white/50 hover:text-white hover:border-white/35 transition"
+                      >
+                        {s}
+                      </button>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
                 <div className="rounded-xl bg-black/30 border border-white/10 px-4 py-3 mb-4">
@@ -1287,9 +1325,9 @@ export default function CommandForge() {
                         {" · "}Budget: <span className="text-white font-semibold">{parsedBudget ? formatPrice(parsedBudget, priceSource) : "no limit"}</span>
                       </>
                     )}
-                    {theme && (
+                    {theme.trim() && (
                       <>
-                        {" · "}Theme: <span className="text-white font-semibold">{THEME_OPTIONS.find((t) => t.id === theme)?.label}</span>
+                        {" · "}Theme: <span className="text-white font-semibold">{theme.trim()}</span>
                       </>
                     )}
                   </p>

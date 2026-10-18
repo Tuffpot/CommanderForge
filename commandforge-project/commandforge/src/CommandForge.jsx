@@ -1143,7 +1143,9 @@ export default function CommandForge() {
       const p = priceSource === "eur" ? d?.priceEur : d?.priceUsd;
       if (p != null) { total += parseFloat(p); anyPriced = true; }
     });
-    [...deck.nonbasics, ...deck.basics].forEach((l) => {
+    // Basics are left out on purpose, matching the budget (which never
+    // charges for them) and the note shown under the land list.
+    deck.nonbasics.forEach((l) => {
       const d = cardData[l.name.toLowerCase()];
       const p = priceSource === "eur" ? d?.priceEur : d?.priceUsd;
       if (p != null) { total += parseFloat(p) * l.qty; anyPriced = true; }
@@ -1772,6 +1774,11 @@ export default function CommandForge() {
                   <p className="cf-mono text-[11px] cf-gold font-semibold mb-2.5 tracking-wide">
                     LANDS · {deck.nonbasics.reduce((a, l) => a + l.qty, 0) + deck.basics.reduce((a, l) => a + l.qty, 0)}
                   </p>
+                  {priceSource !== "none" && deck.basics.length > 0 && (
+                    <p className="text-xs text-white/50 mb-2.5">
+                      Basic lands aren't priced or counted in the deck total or budget. They cost pennies each, and most players already have plenty.
+                    </p>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
                     {[...deck.nonbasics, ...deck.basics].map((l) => (
                       <CardRow

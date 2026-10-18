@@ -1459,18 +1459,18 @@ export default function CommandForge() {
 
       <div className="cf-bg min-h-screen">
         <header className="bg-black border-b border-white/10 sticky top-0 z-10">
-          <div className="max-w-5xl mx-auto px-5 py-4 flex items-center justify-between gap-4">
-            <button onClick={reset} className="flex items-center gap-3">
+          <div className="max-w-5xl mx-auto px-4 sm:px-5 py-4 flex items-center justify-between gap-2 sm:gap-4">
+            <button onClick={reset} className="flex items-center gap-3 shrink-0" aria-label="Commander Forge home">
               <span className="w-10 h-10 rounded-xl bg-[#E3B25C] flex items-center justify-center text-black shrink-0">
                 <Swords size={20} strokeWidth={2.5} />
               </span>
-              <span className="cf-display text-lg text-white">Commander Forge</span>
+              <span className="cf-display text-lg text-white whitespace-nowrap hidden sm:inline">Commander Forge</span>
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 min-w-0">
               <nav className="flex items-center gap-1">
                 <button
                   onClick={() => setView("setup")}
-                  className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
+                  className={`px-3 sm:px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
                     view !== "decks" ? "bg-[#E3B25C] text-black" : "text-white/70 hover:text-white"
                   }`}
                 >
@@ -1478,7 +1478,7 @@ export default function CommandForge() {
                 </button>
                 <button
                   onClick={() => setView("decks")}
-                  className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
+                  className={`px-3 sm:px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
                     view === "decks" ? "bg-[#E3B25C] text-black" : "text-white/70 hover:text-white"
                   }`}
                 >
@@ -1506,7 +1506,7 @@ export default function CommandForge() {
                     setAuthNotice("");
                     setAuthModalOpen(true);
                   }}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border border-white/20 text-white/80 hover:border-white/40 hover:text-white transition"
+                  className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap shrink-0 border border-white/20 text-white/80 hover:border-white/40 hover:text-white transition"
                 >
                   <User size={14} /> Sign In
                 </button>
@@ -1802,7 +1802,7 @@ export default function CommandForge() {
                 {[
                   { n: 1, title: "Color-identity legal", desc: "Every card respects your commander's color identity — fully Commander-legal." },
                   { n: 2, title: "Bracket-aware", desc: "Ramp, removal, and win-condition density scale with the bracket you choose." },
-                  { n: 3, title: "Runs in your browser", desc: "No login and no server — decks are saved for this session only." },
+                  { n: 3, title: "Save to your account", desc: "Sign in to keep your decks and open them on any device." },
                 ].map((f) => (
                   <div key={f.n} className="cf-panel-alt rounded-xl p-4 flex items-start gap-4">
                     <NumBadge n={f.n} />

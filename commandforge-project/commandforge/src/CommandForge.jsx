@@ -577,6 +577,68 @@ function upgradeWithinBudget(picks, categoryCards, usedNames, cardData, priceSou
   }
 }
 
+/* ---------------------------------------------------------
+   MANA FIXING — multicolour decks need lands that make more than one of
+   their colours, the way real Commander decks run shocks, fetches and
+   friends. Lands are fetched in three tiers, best first, so an unlimited
+   budget takes the premium cycles and a tight one falls through to the
+   cheap tapped duals that do the same job. Each tier is one search made
+   of plain rules-text matches, filtered afterwards by what the land
+   actually produces.
+--------------------------------------------------------- */
+const FIXING_TIERS = [
+  // Untapped or nearly-free: original duals, shocks, fetches, surveil lands,
+  // triomes.
+  "is:dual",
+  '(o:"pay 2 life" or (o:"pay 1 life, sacrifice" o:"search your library") or o:"surveil 1" or o:"cycling {3}")',
+  // Solid mid-price cycles: check, fast, slow, battlebond and pain lands,
+  // plus any-colour lands such as Command Tower and Exotic Orchard.
+  '(o:"unless you control a" or o:"unless you control two or fewer other lands" or o:"unless you control two or more other lands" ' +
+    'or o:"unless you control two or more basic lands" or o:"deals 1 damage to you" or o:"mana of any color")',
+  // Budget fixing: gain lands, scry lands, guildgates, thriving lands,
+  // bounce lands and Evolving Wilds-style fetches.
+  '(o:"you gain 1 life" or o:"scry 1" or t:gate or o:"choose a color other than" ' +
+    'or o:"return a land you control to its owner\'s hand" or (o:"search your library for a basic land card" o:"sacrifice"))',
+];
+
+// How many nonbasic lands a deck runs. Mono-colour decks only want a couple
+// of utility lands; multicolour decks lean harder on fixing the more colours
+// they have, and more again at higher brackets.
+function nonbasicTarget(identity, bracket) {
+  if (identity.length <= 1) return 1 + (bracket.id - 1);
+  const base = identity.length === 2 ? 7 : identity.length === 3 ? 10 : 13;
+  return base + bracket.id;
+}
+
+// Keeps a land only if it really fixes for this deck: it makes at least two
+// of the deck's colours, or it fetches a basic type the deck plays.
+function fixesFor(card, identity) {
+  const made = (card.produced_mana || []).filter((c) => identity.includes(c));
+  if (made.length >= 2) return true;
+  if ((card.produced_mana || []).length) return false;
+  const text = (card.oracle_text || card.card_faces?.map((f) => f.oracle_text).join("\n") || "").toLowerCase();
+  return text.includes("basic land") || identity.some((c) => text.includes(BASIC_LAND[c].toLowerCase()));
+}
+
+async function fetchFixingLands(identity, priceSource) {
+  const base = `f:commander id<=${identity.join("").toLowerCase()} t:land -t:basic`;
+  // One tier at a time: these run alongside the category searches, and
+  // firing them all at once risks Scryfall's rate limit.
+  const tiers = [];
+  for (const q of FIXING_TIERS) {
+    tiers.push(await scryfallSearchCards(`${base} ${q}`, priceSource).catch(() => []));
+  }
+  const seen = new Set();
+  const lands = [];
+  tiers.flat().forEach((card) => {
+    const key = card.name.toLowerCase();
+    if (seen.has(key) || !fixesFor(card, identity)) return;
+    seen.add(key);
+    lands.push(mapScryfallCard(card));
+  });
+  return lands;
+}
+
 async function buildDeck(commander, style, bracket, opts = {}) {
   const { budget = null, priceSource = "none", themeQuery = null } = opts;
   const identity = commander.identity;
@@ -587,9 +649,11 @@ async function buildDeck(commander, style, bracket, opts = {}) {
   let nonlandTotal = 0;
 
   const catKeys = Object.keys(recipe);
-  const [categoryResults, nonbasicRaw] = await Promise.all([
+  const multicolor = identity.length > 1;
+  const [categoryResults, nonbasicRaw, fixingLands] = await Promise.all([
     Promise.all(catKeys.map((cat) => scryfallSearchCards(categoryQuery(cat, identity, commander, style, themeQuery), priceSource).catch(() => []))),
     scryfallSearchCards(`f:commander id<=${identity.join("").toLowerCase() || "c"} t:land -t:basic`, priceSource).catch(() => []),
+    multicolor ? fetchFixingLands(identity, priceSource) : Promise.resolve([]),
   ]);
 
   // If every single fetch came back empty, this is almost certainly a
@@ -603,15 +667,21 @@ async function buildDeck(commander, style, bracket, opts = {}) {
     categoryCards[cat] = categoryResults[i].map(mapScryfallCard);
     categoryCards[cat].forEach((c) => { cardData[c.name.toLowerCase()] = c; });
   });
-  const nonbasicPool = nonbasicRaw.map(mapScryfallCard);
+  // Multicolour pools put the tiered fixing lands first, then whatever other
+  // popular lands are left (utility lands like Reliquary Tower).
+  const fixingNames = new Set(fixingLands.map((c) => c.name.toLowerCase()));
+  const nonbasicPool = [
+    ...fixingLands,
+    ...nonbasicRaw.map(mapScryfallCard).filter((c) => !fixingNames.has(c.name.toLowerCase())),
+  ];
   nonbasicPool.forEach((c) => { cardData[c.name.toLowerCase()] = c; });
 
   const budgetActive = budget != null && budget > 0 && priceSource !== "none";
   // Basics are effectively free, so the budget really has to cover the
   // nonland cards plus the handful of nonbasic lands — that's the slot
   // count the per-card ceiling is averaged over.
-  const pricedSlots = NONLAND_TARGET + (identity.length > 1 ? 4 : 1) + (bracket.id - 1);
-  const nonbasicTargetCount = Math.min(nonbasicPool.length, (identity.length > 1 ? 4 : 1) + (bracket.id - 1));
+  const pricedSlots = NONLAND_TARGET + nonbasicTarget(identity, bracket);
+  const nonbasicTargetCount = Math.min(nonbasicPool.length, nonbasicTarget(identity, bracket));
 
   /* What the cheapest legal version of this deck would cost: the mandatory
      staples plus the cheapest available card for every remaining slot. The
@@ -669,10 +739,13 @@ async function buildDeck(commander, style, bracket, opts = {}) {
   const { staples: landStaples, rest: nonbasicRest } =
     identity.length > 1 ? pullStaples(nonbasicRawFiltered, ["Command Tower"]) : { staples: [], rest: nonbasicRawFiltered };
 
-  const nonbasicCandidates = orderCandidates(nonbasicRest, cardData, priceSource, preferExpensive);
+  // Fixing lands keep their tier order (best cycles first) so the budget
+  // check walks down from shocks and fetches to gain lands and guildgates.
+  const nonbasicCandidates = multicolor ? nonbasicRest : orderCandidates(nonbasicRest, cardData, priceSource, preferExpensive);
   const cheapNonbasics = cheapestFirst(nonbasicRest, cardData, priceSource);
-  const nonbasicBase = identity.length > 1 ? 4 : 1;
-  const nonbasicRestTarget = Math.max(0, Math.min(nonbasicCandidates.length, nonbasicBase + (bracket.id - 1)) - landStaples.length);
+  // Leave room for a few basics of each colour so fetch lands have targets.
+  const nonbasicCap = Math.max(0, landTarget - 3 * identity.length);
+  const nonbasicRestTarget = Math.max(0, Math.min(nonbasicCandidates.length, nonbasicTarget(identity, bracket), nonbasicCap) - landStaples.length);
   const nonbasicsFilled = pickWithinBudget(nonbasicCandidates, nonbasicRestTarget, cardData, priceSource, budgetState, cheapNonbasics);
 
   if (budgetState.active) {

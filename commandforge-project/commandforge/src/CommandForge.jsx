@@ -119,8 +119,23 @@ const CATEGORY_TAGS = {
 };
 
 // Best-effort text queries for categories without a single reliable tag.
-const WINCON_QUERY = "(t:creature pow>=6 or otag:boardwipe)";
-const UTILITY_QUERY = '(o:"destroy target artifact" or o:"destroy target enchantment" or o:"exile target artifact" or o:"exile target enchantment")';
+// Win conditions are cards that actually end games: outright wins, drains
+// that hit every opponent, extra combats, team-wide pump finishers, and big
+// creatures that can connect. Board wipes used to live here, but they stop
+// the table winning rather than winning for you (removal already covers them).
+const WINCON_QUERY =
+  '(o:"you win the game" or o:"each opponent loses" or o:"additional combat phase" ' +
+  'or (o:"creatures you control get +" o:"until end of turn") ' +
+  'or (t:creature pow>=6 (kw:trample or kw:flying or kw:"double strike" or kw:annihilator or o:"can\'t be blocked")) ' +
+  "or (t:creature pow>=8))";
+// Utility is the toolbox: tutors, counterspells, artifact/enchantment
+// answers, graveyard hate and card recursion, rather than only the first.
+const UTILITY_QUERY =
+  '(otag:tutor or o:"counter target spell" ' +
+  'or o:"destroy target artifact" or o:"destroy target enchantment" ' +
+  'or o:"exile target artifact" or o:"exile target enchantment" ' +
+  "or o:\"exile target player's graveyard\" or o:\"exile all graveyards\" or o:\"exile target card from a graveyard\" " +
+  'or (o:"return target" o:"from your graveyard to your hand"))';
 
 // Reused from the archetype guesser — same keywords, phrased as search terms
 // so "EDHREC-inspired" mode can pull cards matching a commander's theme.

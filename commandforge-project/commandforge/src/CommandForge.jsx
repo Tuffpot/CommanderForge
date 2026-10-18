@@ -135,10 +135,40 @@ const ARCHETYPE_QUERIES = {
   enchantments: 'o:"enchantment you control"',
   bigmana: '(o:"additional land" or o:"search your library for a basic land")',
   lifegain: '(o:"gain life" or o:"whenever you gain life" or o:lifelink)',
+  voltron: '(t:equipment or t:aura or o:"equipped creature" or o:"enchanted creature" or o:"for each aura" or o:"for each equipment")',
+};
+
+// Other spellings people type (or that the quick-pick chips produce) for the
+// curated archetypes above. Without these, "+1/+1 Counters" normalises to
+// "11counters" and silently drops to the much looser free-text search.
+const THEME_ALIASES = {
+  "11counters": "counters",
+  "11counter": "counters",
+  plusonecounters: "counters",
+  token: "tokens",
+  gowide: "tokens",
+  sacrifice: "aristocrats",
+  spells: "spellslinger",
+  reanimator: "graveyard",
+  reanimation: "graveyard",
+  enchantress: "enchantments",
+  ramp: "bigmana",
+  equipment: "voltron",
+  auras: "voltron",
 };
 
 function normalizeThemeKey(text) {
-  return (text || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const key = (text || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  return THEME_ALIASES[key] || key;
+}
+
+// "Dragons" -> "Dragon", "Elves" -> "Elf", so a typed tribe matches the
+// singular creature type printed on the type line.
+function singularType(word) {
+  const w = word.trim();
+  if (/ves$/i.test(w)) return w.slice(0, -3) + "f";
+  if (/[^s]s$/i.test(w)) return w.slice(0, -1);
+  return w;
 }
 
 // Free-text theme search for the color-randomizer path. If what was typed
@@ -153,8 +183,15 @@ function resolveThemeQuery(themeText) {
   // No curated match — fall back to a plain search for the typed phrase in
   // either the card's rules text or its type line (catches tribal themes
   // like "dragons" or "elves" as well as mechanical ones).
+  // Type lines print the singular ("Creature — Dragon"), so a plural tribe
+  // like "dragons" also searches the singular type. The singular isn't used
+  // for rules text: o:"elf" would match "itself" on unrelated cards.
   const escaped = trimmed.replace(/"/g, "");
-  return `(o:"${escaped}" or t:"${escaped}")`;
+  const singular = singularType(escaped);
+  const typePart = singular.toLowerCase() !== escaped.toLowerCase()
+    ? `t:"${escaped}" or t:"${singular}"`
+    : `t:"${escaped}"`;
+  return `(o:"${escaped}" or ${typePart})`;
 }
 
 // A handful of starting points shown as quick-pick chips under the free-text
@@ -179,6 +216,7 @@ const ARCHETYPE_BLURBS = {
   enchantments: "It stacks up enchantments for incremental value and powerful constellation-style triggers.",
   bigmana: "It ramps hard into a handful of huge threats, aiming to simply outsize the table.",
   lifegain: "It gains large amounts of life and turns that life total into a real engine for winning the game.",
+  voltron: "It suits up one creature with equipment and auras, then swings for lethal commander damage.",
 };
 
 function strategyBlurb(deck) {

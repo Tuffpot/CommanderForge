@@ -302,7 +302,7 @@ function mapScryfallCard(card) {
   };
 }
 
-const BASIC_LAND = { W: "Plains", U: "Island", B: "Swamp", R: "Mountain", G: "Forest" };
+const BASIC_LAND = { W: "Plains", U: "Island", B: "Swamp", R: "Mountain", G: "Forest", C: "Wastes" };
 
 const BRACKETS = [
   { id: 1, name: "Exhibition", tag: "Casual / jank", recipe: { ramp: 6, draw: 8, removal: 6, protection: 2, synergy: 15, wincon: 1, utility: 24 } },
@@ -319,9 +319,10 @@ const HOUSE_NAMES = {
   orzhov: ["W", "B"], izzet: ["U", "R"], golgari: ["B", "G"], boros: ["R", "W"], simic: ["G", "U"],
   jeskai: ["W", "U", "R"], sultai: ["U", "B", "G"], mardu: ["B", "R", "W"], temur: ["R", "G", "U"], abzan: ["G", "W", "B"],
   bant: ["G", "W", "U"], esper: ["W", "U", "B"], grixis: ["U", "B", "R"], jund: ["B", "R", "G"], naya: ["R", "G", "W"],
+  colorless: ["C"], colourless: ["C"],
 };
 
-const SINGLE_COLOR_NAMES = { W: "Mono-White", U: "Mono-Blue", B: "Mono-Black", R: "Mono-Red", G: "Mono-Green" };
+const SINGLE_COLOR_NAMES = { W: "Mono-White", U: "Mono-Blue", B: "Mono-Black", R: "Mono-Red", G: "Mono-Green", C: "Colorless" };
 
 // Four-color (missing one color) nicknames, from the Ravnica Nephilim cycle
 const FOUR_COLOR_NAMES = {
@@ -352,6 +353,7 @@ const COLOR_META = {
   B: { label: "Black", swatch: "#9C8FB5" },
   R: { label: "Red", swatch: "#E38B6B" },
   G: { label: "Green", swatch: "#8FBE8A" },
+  C: { label: "Colorless", swatch: "#C9C4CE" },
 };
 
 // `list` arrives already ordered by Scryfall's EDHREC popularity rank (most
@@ -607,7 +609,9 @@ const FIXING_TIERS = [
 // of utility lands; multicolour decks lean harder on fixing the more colours
 // they have, and more again at higher brackets.
 function nonbasicTarget(identity, bracket) {
-  if (identity.length <= 1) return 1 + (bracket.id - 1);
+  // Colourless decks lean on lands like Ancient Tomb and Eldrazi Temple.
+  if (identity.length === 0) return 8 + bracket.id;
+  if (identity.length === 1) return 1 + (bracket.id - 1);
   // Roughly what real decks run: a two-colour deck around 10 nonbasics, a
   // five-colour deck well over 20.
   const base = { 2: 8, 3: 12, 4: 16 }[identity.length] ?? 19;
@@ -667,8 +671,12 @@ async function buildDeck(commander, style, bracket, opts = {}) {
   if (totalFetched === 0) throw new Error("Scryfall returned no data — likely a network issue");
 
   const categoryCards = {};
+  // These only tap for the commander's colours, so they make nothing in a
+  // colourless deck.
+  const deadInColorless = new Set(["arcane signet", "command tower"]);
   catKeys.forEach((cat, i) => {
-    categoryCards[cat] = categoryResults[i].map(mapScryfallCard);
+    categoryCards[cat] = categoryResults[i].map(mapScryfallCard)
+      .filter((c) => identity.length > 0 || !deadInColorless.has(c.name.toLowerCase()));
     categoryCards[cat].forEach((c) => { cardData[c.name.toLowerCase()] = c; });
   });
   // Multicolour pools put the tiered fixing lands first, then whatever other
@@ -774,8 +782,10 @@ async function buildDeck(commander, style, bracket, opts = {}) {
 
   const basicsNeeded = landTarget - nonbasics.length;
   const basics = [];
-  identity.forEach((c, i) => {
-    const share = Math.floor(basicsNeeded / identity.length) + (i < basicsNeeded % identity.length ? 1 : 0);
+  // A colourless commander can't run coloured basics, so the rest is Wastes.
+  const basicColors = identity.length ? identity : ["C"];
+  basicColors.forEach((c, i) => {
+    const share = Math.floor(basicsNeeded / basicColors.length) + (i < basicsNeeded % basicColors.length ? 1 : 0);
     if (share > 0) basics.push({ name: BASIC_LAND[c], qty: share });
   });
 
@@ -1189,8 +1199,13 @@ export default function CommandForge() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colorFilter, houseName, theme]);
 
+  // Colourless can't combine with a colour, so picking one clears the other.
   function toggleColor(c) {
-    setColorFilter((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+    setColorFilter((prev) => {
+      if (prev.includes(c)) return prev.filter((x) => x !== c);
+      if (c === "C") return ["C"];
+      return [...prev.filter((x) => x !== "C"), c];
+    });
   }
 
   async function resolveAndForgeFromSearch() {
@@ -1642,10 +1657,11 @@ export default function CommandForge() {
 
               <div className="cf-panel rounded-2xl p-6 mb-8">
                 <div className="flex justify-center gap-3 mb-4">
-                  {["W", "U", "B", "R", "G"].map((c) => (
+                  {["W", "U", "B", "R", "G", "C"].map((c) => (
                     <button
                       key={c}
                       onClick={() => toggleColor(c)}
+                      title={COLOR_META[c].label}
                       className={`w-11 h-11 rounded-full border-2 flex items-center justify-center font-bold text-sm transition ${
                         colorFilter.includes(c) ? "border-transparent" : "border-white/20 text-white/50 hover:border-white/40"
                       }`}

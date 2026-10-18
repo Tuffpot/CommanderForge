@@ -812,7 +812,7 @@ async function buildDeck(commander, style, bracket, opts = {}) {
     }
   }
 
-  return { picks, nonbasics, basics, budgetActive, budgetRemaining: budgetState.remaining, cardData };
+  return { picks, nonbasics, basics, budgetActive, budgetRemaining: budgetState.remaining, cardData, shortfall: Math.max(0, deficit) };
 }
 
 // Looks up the cheapest priced printing of each named card, a few dozen names
@@ -1161,10 +1161,14 @@ export default function CommandForge() {
   useEffect(() => {
     if (selectedCommander) return;
     setSearchError(false);
+    // A slow response for an earlier keystroke mustn't overwrite the results
+    // for what's typed now.
+    let stale = false;
     const handle = setTimeout(async () => {
       setSearchLoading(true);
       try {
         const { cards } = await scryfallSearchCommanders(buildNameQuery(search));
+        if (stale) return;
         const filtered = filterAndSortByName(cards, search);
         setSearchResults(filtered);
         const exact = filtered.find((c) => c.name.toLowerCase() === search.trim().toLowerCase());
@@ -1176,7 +1180,10 @@ export default function CommandForge() {
         setSearchLoading(false);
       }
     }, 350);
-    return () => clearTimeout(handle);
+    return () => {
+      stale = true;
+      clearTimeout(handle);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, selectedCommander]);
 
@@ -1269,8 +1276,11 @@ export default function CommandForge() {
       });
       setDeck({
         commander,
-        style: inspired ? "edhrec" : "random",
+        // The style actually used, so a theme-driven build isn't described
+        // as "randomly assembled".
+        style: buildStyle,
         theme: usedTheme,
+        shortfall: built.shortfall,
         bracket: activeBracket,
         budgetTarget: parsedBudget,
         picks: built.picks,
@@ -1326,6 +1336,23 @@ export default function CommandForge() {
     }
   }
 
+  // cardData holds every candidate Scryfall returned (well over a thousand
+  // cards with rules text), so a saved deck keeps only its own cards.
+  function deckCardData(d, data) {
+    const names = [
+      d.commander.name,
+      ...Object.values(d.picks).flat().map((c) => c.name),
+      ...d.nonbasics.map((l) => l.name),
+      ...d.basics.map((l) => l.name),
+    ];
+    const out = {};
+    names.forEach((n) => {
+      const entry = data[n.toLowerCase()];
+      if (entry) out[n.toLowerCase()] = entry;
+    });
+    return out;
+  }
+
   async function saveDeck() {
     if (!deck || !session) return;
     setDeckSaveError("");
@@ -1340,7 +1367,7 @@ export default function CommandForge() {
       nonbasics: deck.nonbasics,
       basics: deck.basics,
       price_source: priceSource,
-      card_data: priceSource !== "none" ? cardData : {},
+      card_data: priceSource !== "none" ? deckCardData(deck, cardData) : {},
     });
     if (error) {
       setDeckSaveError(error.message || "Couldn't save this deck.");
@@ -1376,7 +1403,10 @@ export default function CommandForge() {
   async function deleteDeck(id) {
     if (viewingSaved?.id === id) setViewingSaved(null);
     setSavedDecks((prev) => prev.filter((d) => d.id !== id)); // optimistic
-    await supabase.from("decks").delete().eq("id", id);
+    const { error } = await supabase.from("decks").delete().eq("id", id);
+    // If the delete didn't go through, put the list back as it really is
+    // rather than leaving a deck that reappears on the next visit.
+    if (error) await refreshSavedDecks();
   }
 
   function reset() {
@@ -1836,6 +1866,14 @@ export default function CommandForge() {
                   </p>
                 )}
               </div>
+
+              {cardDataStatus === "done" && deck.shortfall > 0 && (
+                <div className="cf-panel rounded-xl p-4 mb-4 border-amber-400/30">
+                  <p className="text-xs text-white/60 leading-relaxed">
+                    Scryfall didn't return enough cards to fill {deck.shortfall} spell slot{deck.shortfall === 1 ? "" : "s"}, so {deck.shortfall === 1 ? "an extra basic land was" : `${deck.shortfall} extra basic lands were`} added instead. That happens when a narrow theme or colour combination has few matching cards, or when Scryfall was briefly busy, in which case forging again usually fixes it.
+                  </p>
+                </div>
+              )}
 
               {cardDataStatus === "error" && (
                 <div className="cf-panel rounded-xl p-4 mb-4 border-red-400/30">

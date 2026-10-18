@@ -587,10 +587,12 @@ function upgradeWithinBudget(picks, categoryCards, usedNames, cardData, priceSou
    actually produces.
 --------------------------------------------------------- */
 const FIXING_TIERS = [
-  // Untapped or nearly-free: original duals, shocks, fetches, surveil lands,
-  // triomes.
-  "is:dual",
+  // Untapped or nearly-free: shocks, fetches, surveil lands and triomes,
+  // then the original duals. The duals come after because they cost
+  // hundreds each and would otherwise take ten slots before any shock or
+  // fetch in a no-budget five-colour deck.
   '(o:"pay 2 life" or (o:"pay 1 life, sacrifice" o:"search your library") or o:"surveil 1" or o:"cycling {3}")',
+  "is:dual",
   // Solid mid-price cycles: check, fast, slow, battlebond and pain lands,
   // plus any-colour lands such as Command Tower and Exotic Orchard.
   '(o:"unless you control a" or o:"unless you control two or fewer other lands" or o:"unless you control two or more other lands" ' +
@@ -606,7 +608,9 @@ const FIXING_TIERS = [
 // they have, and more again at higher brackets.
 function nonbasicTarget(identity, bracket) {
   if (identity.length <= 1) return 1 + (bracket.id - 1);
-  const base = identity.length === 2 ? 7 : identity.length === 3 ? 10 : 13;
+  // Roughly what real decks run: a two-colour deck around 10 nonbasics, a
+  // five-colour deck well over 20.
+  const base = { 2: 8, 3: 12, 4: 16 }[identity.length] ?? 19;
   return base + bracket.id;
 }
 
@@ -711,6 +715,33 @@ async function buildDeck(commander, style, bracket, opts = {}) {
   };
   const preferExpensive = !budgetActive;
 
+  // Lands are picked before the nonland categories so the mana base gets
+  // first call on the upgrade budget. Picked last, the fetches and shocks
+  // only ever saw whatever money the spells had left, which was usually
+  // none, so multicolour decks fell straight through to guildgates.
+  const nonbasicRawFiltered = nonbasicPool.filter((l) => !usedNames.has(l.name.toLowerCase()));
+  const { staples: landStaples, rest: nonbasicRest } =
+    identity.length > 1 ? pullStaples(nonbasicRawFiltered, ["Command Tower"]) : { staples: [], rest: nonbasicRawFiltered };
+
+  // Fixing lands keep their tier order (best cycles first) so the budget
+  // check walks down from shocks and fetches to gain lands and guildgates.
+  const nonbasicCandidates = multicolor ? nonbasicRest : orderCandidates(nonbasicRest, cardData, priceSource, preferExpensive);
+  const cheapNonbasics = cheapestFirst(nonbasicRest, cardData, priceSource);
+  // Leave room for a couple of basics of each colour so fetch lands have
+  // targets. Any nonland shortfall later only adds more basics.
+  const nonbasicCap = Math.max(0, LAND_TARGET - 2 * identity.length);
+  const nonbasicRestTarget = Math.max(0, Math.min(nonbasicCandidates.length, nonbasicTarget(identity, bracket), nonbasicCap) - landStaples.length);
+  const nonbasicsFilled = pickWithinBudget(nonbasicCandidates, nonbasicRestTarget, cardData, priceSource, budgetState, cheapNonbasics);
+
+  if (budgetState.active) {
+    landStaples.forEach((c) => {
+      spend(budgetState, priceOf(c.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE);
+    });
+  }
+
+  const nonbasicsChosen = [...landStaples, ...nonbasicsFilled];
+  nonbasicsChosen.forEach((c) => usedNames.add(c.name.toLowerCase()));
+
   catKeys.forEach((cat) => {
     const rawCandidates = categoryCards[cat].filter((c) => !usedNames.has(c.name.toLowerCase()));
     const { staples, rest } = pullStaples(rawCandidates, AUTO_INCLUDES[cat] || []);
@@ -734,28 +765,6 @@ async function buildDeck(commander, style, bracket, opts = {}) {
 
   const deficit = NONLAND_TARGET - nonlandTotal;
   const landTarget = LAND_TARGET + deficit;
-
-  const nonbasicRawFiltered = nonbasicPool.filter((l) => !usedNames.has(l.name.toLowerCase()));
-  const { staples: landStaples, rest: nonbasicRest } =
-    identity.length > 1 ? pullStaples(nonbasicRawFiltered, ["Command Tower"]) : { staples: [], rest: nonbasicRawFiltered };
-
-  // Fixing lands keep their tier order (best cycles first) so the budget
-  // check walks down from shocks and fetches to gain lands and guildgates.
-  const nonbasicCandidates = multicolor ? nonbasicRest : orderCandidates(nonbasicRest, cardData, priceSource, preferExpensive);
-  const cheapNonbasics = cheapestFirst(nonbasicRest, cardData, priceSource);
-  // Leave room for a few basics of each colour so fetch lands have targets.
-  const nonbasicCap = Math.max(0, landTarget - 3 * identity.length);
-  const nonbasicRestTarget = Math.max(0, Math.min(nonbasicCandidates.length, nonbasicTarget(identity, bracket), nonbasicCap) - landStaples.length);
-  const nonbasicsFilled = pickWithinBudget(nonbasicCandidates, nonbasicRestTarget, cardData, priceSource, budgetState, cheapNonbasics);
-
-  if (budgetState.active) {
-    landStaples.forEach((c) => {
-      spend(budgetState, priceOf(c.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE);
-    });
-  }
-
-  const nonbasicsChosen = [...landStaples, ...nonbasicsFilled];
-  nonbasicsChosen.forEach((c) => usedNames.add(c.name.toLowerCase()));
 
   // Everything is picked and capped — now put any leftover budget to work
   // on better cards instead of leaving it unspent.

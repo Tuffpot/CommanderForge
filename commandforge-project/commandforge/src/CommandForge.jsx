@@ -658,11 +658,18 @@ async function buildDeck(commander, style, bracket, opts = {}) {
 
   const catKeys = Object.keys(recipe);
   const multicolor = identity.length > 1;
-  const [categoryResults, nonbasicRaw, fixingLands] = await Promise.all([
+  const ownCommanderPrice = priceSource === "eur" ? commander.priceEur : commander.priceUsd;
+  const [categoryResults, nonbasicRaw, fixingLands, commanderPrinting] = await Promise.all([
     Promise.all(catKeys.map((cat) => scryfallSearchCards(categoryQuery(cat, identity, commander, style, themeQuery), priceSource).catch(() => []))),
     scryfallSearchCards(`f:commander id<=${identity.join("").toLowerCase() || "c"} t:land -t:basic`, priceSource).catch(() => []),
     multicolor ? fetchFixingLands(identity, priceSource) : Promise.resolve([]),
+    // The printing the commander search returned may have no price, so look
+    // up its cheapest priced one before budgeting.
+    priceSource !== "none" && ownCommanderPrice == null
+      ? fetchCheapestPrintings([commander.name], priceSource).catch(() => ({}))
+      : Promise.resolve({}),
   ]);
+  Object.assign(cardData, commanderPrinting);
 
   // If every single fetch came back empty, this is almost certainly a
   // network failure rather than a genuinely cardless color combo — surface
@@ -689,6 +696,13 @@ async function buildDeck(commander, style, bracket, opts = {}) {
   nonbasicPool.forEach((c) => { cardData[c.name.toLowerCase()] = c; });
 
   const budgetActive = budget != null && budget > 0 && priceSource !== "none";
+  // The commander is part of the deck's cost, so its price comes off the
+  // budget before any of the 99 are picked. A commander that costs more than
+  // the whole budget leaves nothing, and the 99 are built as cheaply as possible.
+  const commanderPrice = ownCommanderPrice != null
+    ? parseFloat(ownCommanderPrice)
+    : priceOf(commander.name, cardData, priceSource) ?? 0;
+  const deckBudget = budgetActive ? Math.max(0, budget - commanderPrice) : Infinity;
   // Basics are effectively free, so the budget really has to cover the
   // nonland cards plus the handful of nonbasic lands — that's the slot
   // count the per-card ceiling is averaged over.
@@ -714,12 +728,12 @@ async function buildDeck(commander, style, bracket, opts = {}) {
 
   const budgetState = {
     active: budgetActive,
-    total: budgetActive ? budget : Infinity,
-    remaining: budgetActive ? budget : Infinity,
+    total: deckBudget,
+    remaining: deckBudget,
     slotsRemaining: pricedSlots,
     // Money available above the cheapest legal build. Zero means the budget
     // barely covers (or can't cover) a legal 99 — build the cheapest version.
-    discretionary: budgetActive ? Math.max(0, budget - baselineCost) : Infinity,
+    discretionary: budgetActive ? Math.max(0, deckBudget - baselineCost) : Infinity,
   };
   const preferExpensive = !budgetActive;
 
@@ -1242,6 +1256,9 @@ export default function CommandForge() {
     if (!deck || priceSource === "none") return null;
     let total = 0;
     let anyPriced = false;
+    const cmd = cardData[deck.commander.name.toLowerCase()];
+    const cmdPrice = priceSource === "eur" ? cmd?.priceEur : cmd?.priceUsd;
+    if (cmdPrice != null) { total += parseFloat(cmdPrice); anyPriced = true; }
     Object.values(deck.picks).flat().forEach((c) => {
       const d = cardData[c.name.toLowerCase()];
       const p = priceSource === "eur" ? d?.priceEur : d?.priceUsd;
@@ -1842,7 +1859,7 @@ export default function CommandForge() {
                 {priceSource !== "none" && (
                   <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
                     <span className="text-xs text-white/50">
-                      Estimated deck total ({priceSource === "eur" ? "Cardmarket" : "TCGPlayer"})
+                      Estimated deck total, commander included ({priceSource === "eur" ? "Cardmarket" : "TCGPlayer"})
                     </span>
                     {cardDataStatus === "loading" ? (
                       <span className="flex items-center gap-1.5 text-xs text-white/50">
@@ -1862,7 +1879,7 @@ export default function CommandForge() {
                   <p className={`text-xs mt-2 text-right ${deckTotalPrice() <= deck.budgetTarget ? "text-green-400/80" : "text-amber-400/80"}`}>
                     {deckTotalPrice() <= deck.budgetTarget
                       ? `Under your ${formatPrice(deck.budgetTarget, priceSource)} budget by ${formatPrice(deck.budgetTarget - deckTotalPrice(), priceSource)}`
-                      : `${formatPrice(deckTotalPrice() - deck.budgetTarget, priceSource)} over your ${formatPrice(deck.budgetTarget, priceSource)} budget — not enough cheap eligible cards to fit every slot`}
+                      : `${formatPrice(deckTotalPrice() - deck.budgetTarget, priceSource)} over your ${formatPrice(deck.budgetTarget, priceSource)} budget — ${(priceOf(deck.commander.name, cardData, priceSource) ?? 0) >= deck.budgetTarget ? "the commander alone costs more than the budget, so the rest was built as cheaply as possible" : "not enough cheap eligible cards to fit every slot"}`}
                   </p>
                 )}
               </div>

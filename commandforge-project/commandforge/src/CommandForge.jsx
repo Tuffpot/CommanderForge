@@ -268,8 +268,20 @@ function categoryQuery(cat, identity, commander, style, themeQuery) {
   return `${base} ${CATEGORY_TAGS[cat]}`;
 }
 
-async function scryfallSearchCards(query) {
-  const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=edhrec&unique=cards`);
+// With unique=cards Scryfall returns one printing per card, and by default
+// that can be a promo, Secret Lair or digital-only printing with no price at
+// all. Those cards then showed "—" and were budgeted at a flat guess. Asking
+// for the cheapest printing that has a price in the chosen currency fixes
+// both the displayed price and the budget maths.
+function preferPricedPrinting(priceSource) {
+  if (priceSource === "usd") return " prefer:usd-low";
+  if (priceSource === "eur") return " prefer:eur-low";
+  return "";
+}
+
+async function scryfallSearchCards(query, priceSource = "none") {
+  const q = query + preferPricedPrinting(priceSource);
+  const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(q)}&order=edhrec&unique=cards`);
   if (res.status === 404) return [];
   if (!res.ok) throw new Error(`Scryfall responded ${res.status}`);
   const json = await res.json();
@@ -576,8 +588,8 @@ async function buildDeck(commander, style, bracket, opts = {}) {
 
   const catKeys = Object.keys(recipe);
   const [categoryResults, nonbasicRaw] = await Promise.all([
-    Promise.all(catKeys.map((cat) => scryfallSearchCards(categoryQuery(cat, identity, commander, style, themeQuery)).catch(() => []))),
-    scryfallSearchCards(`f:commander id<=${identity.join("").toLowerCase() || "c"} t:land -t:basic`).catch(() => []),
+    Promise.all(catKeys.map((cat) => scryfallSearchCards(categoryQuery(cat, identity, commander, style, themeQuery), priceSource).catch(() => []))),
+    scryfallSearchCards(`f:commander id<=${identity.join("").toLowerCase() || "c"} t:land -t:basic`, priceSource).catch(() => []),
   ]);
 
   // If every single fetch came back empty, this is almost certainly a
@@ -692,7 +704,37 @@ async function buildDeck(commander, style, bracket, opts = {}) {
     // basics are near-free either way; missing price data here is harmless
   }
 
+  // Safety net for anything still unpriced (including the commander, whose
+  // printing came from the commander search): look up its cheapest priced
+  // printing so the card list and deck total don't silently skip it.
+  if (priceSource !== "none") {
+    const unpriced = [
+      commander.name,
+      ...Object.values(picks).flat().map((c) => c.name),
+      ...nonbasics.map((l) => l.name),
+    ].filter((name) => priceOf(name, cardData, priceSource) == null);
+    try {
+      Object.assign(cardData, await fetchCheapestPrintings(unpriced, priceSource));
+    } catch {
+      // leave them unpriced; the list shows "—" for those
+    }
+  }
+
   return { picks, nonbasics, basics, budgetActive, budgetRemaining: budgetState.remaining, cardData };
+}
+
+// Looks up the cheapest priced printing of each named card, a few dozen names
+// per search so a whole deck's stragglers cost one or two requests.
+async function fetchCheapestPrintings(names, priceSource) {
+  const unique = [...new Set(names)];
+  const result = {};
+  for (let i = 0; i < unique.length; i += 20) {
+    const chunk = unique.slice(i, i + 20);
+    const query = `(${chunk.map((n) => `!"${n.replace(/"/g, "")}"`).join(" or ")})`;
+    const cards = await scryfallSearchCards(query, priceSource);
+    cards.map(mapScryfallCard).forEach((c) => { result[c.name.toLowerCase()] = c; });
+  }
+  return result;
 }
 
 /* ---------------------------------------------------------
@@ -1101,7 +1143,9 @@ export default function CommandForge() {
       const p = priceSource === "eur" ? d?.priceEur : d?.priceUsd;
       if (p != null) { total += parseFloat(p); anyPriced = true; }
     });
-    [...deck.nonbasics, ...deck.basics].forEach((l) => {
+    // Basics are left out on purpose, matching the budget (which never
+    // charges for them) and the note shown under the land list.
+    deck.nonbasics.forEach((l) => {
       const d = cardData[l.name.toLowerCase()];
       const p = priceSource === "eur" ? d?.priceEur : d?.priceUsd;
       if (p != null) { total += parseFloat(p) * l.qty; anyPriced = true; }
@@ -1138,13 +1182,16 @@ export default function CommandForge() {
       });
 
       // The commander's own image/price/oracle text already came back with
-      // the search or randomize call, so fold it in directly.
+      // the search or randomize call, so fold it in directly. Its price falls
+      // back to the cheapest-printing lookup buildDeck did when the printing
+      // the search returned had none.
+      const backfilled = built.cardData[commander.name.toLowerCase()];
       const commanderEntry = {
         name: commander.name,
         imageSmall: commander.imageSmall,
         imageLarge: commander.imageLarge,
-        priceUsd: commander.priceUsd,
-        priceEur: commander.priceEur,
+        priceUsd: commander.priceUsd ?? backfilled?.priceUsd ?? null,
+        priceEur: commander.priceEur ?? backfilled?.priceEur ?? null,
         scryfallUri: commander.scryfallUri,
         oracleText: commander.oracleText,
       };
@@ -1727,6 +1774,11 @@ export default function CommandForge() {
                   <p className="cf-mono text-[11px] cf-gold font-semibold mb-2.5 tracking-wide">
                     LANDS · {deck.nonbasics.reduce((a, l) => a + l.qty, 0) + deck.basics.reduce((a, l) => a + l.qty, 0)}
                   </p>
+                  {priceSource !== "none" && deck.basics.length > 0 && (
+                    <p className="text-xs text-white/50 mb-2.5">
+                      Basic lands aren't priced or counted in the deck total or budget. They cost pennies each, and most players already have plenty.
+                    </p>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
                     {[...deck.nonbasics, ...deck.basics].map((l) => (
                       <CardRow

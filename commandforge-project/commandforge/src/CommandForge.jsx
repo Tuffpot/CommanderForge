@@ -165,8 +165,31 @@ const THEME_SUGGESTIONS = [
   "+1/+1 Counters", "Wheels", "Ninjas", "Enchantments", "Big Mana", "Dragons", "Voltron",
 ];
 
-// A short plain-English summary of what kind of deck just got built, shown
-// at the top of the result screen.
+// One-sentence gameplan for each curated archetype, used as the second
+// sentence of the deck description. Free-typed themes that don't match one
+// of these fall back to a generic line that still names the theme.
+const ARCHETYPE_BLURBS = {
+  aristocrats: "It sacrifices its own creatures for value, grinding out advantage every time something dies.",
+  tokens: "It floods the board with token creatures and looks to go wide for a big combined attack.",
+  spellslinger: "It chains together cheap instants and sorceries to trigger payoffs and burn through the deck.",
+  graveyard: "It fills its graveyard and recurs threats from it, turning removal spells into a resource rather than a setback.",
+  counters: "It piles +1/+1 counters onto its creatures, scaling into a dominant late-game board.",
+  wheels: "It forces everyone to draw and discard, refilling its own hand while disrupting the rest of the table.",
+  ninjas: "It slips unblocked attackers in and out of combat to chain Ninjutsu triggers and card advantage.",
+  enchantments: "It stacks up enchantments for incremental value and powerful constellation-style triggers.",
+  bigmana: "It ramps hard into a handful of huge threats, aiming to simply outsize the table.",
+  lifegain: "It gains large amounts of life and turns that life total into a real engine for winning the game.",
+};
+
+function strategyBlurb(deck) {
+  const key = deck.theme ? normalizeThemeKey(deck.theme) : deck.commander.archetype;
+  if (key && ARCHETYPE_BLURBS[key]) return ARCHETYPE_BLURBS[key];
+  if (deck.theme) return `It leans into a ${deck.theme.toLowerCase()} gameplan, built around cards that reinforce that theme.`;
+  return "It plays a flexible, value-driven game — developing its board, answering threats, and grinding out card advantage along the way.";
+}
+
+// A short, two-sentence summary of what kind of deck just got built and
+// roughly how it plays, shown at the top of the result screen.
 function describeDeck(deck) {
   if (!deck) return "";
   const styleText = deck.style === "edhrec" ? "An EDHREC-inspired build" : "A randomly assembled build";
@@ -174,7 +197,8 @@ function describeDeck(deck) {
   const colorsText = deck.commander.identity.length
     ? ` in ${houseNameForColors(deck.commander.identity)} colors`
     : " with no color identity";
-  return `${styleText} around ${deck.commander.name}${themeText}, aimed at Bracket ${deck.bracket.id} (${deck.bracket.name}) power level${colorsText}.`;
+  const overview = `${styleText} around ${deck.commander.name}${themeText}, aimed at Bracket ${deck.bracket.id} (${deck.bracket.name}) power level${colorsText}.`;
+  return `${overview} ${strategyBlurb(deck)}`;
 }
 
 function categoryQuery(cat, identity, commander, style, themeQuery) {
@@ -287,6 +311,50 @@ function priceOf(name, cardData, priceSource) {
 
 const UNKNOWN_PRICE_ESTIMATE = 2; // used only when a card with no price data must be added under a budget
 
+/* --- Budget shaping ---------------------------------------------------
+   No single card may eat an outsized share of the budget. Letting one
+   £300 land "fit" inside a £400 budget is technically affordable, but it
+   starves the other ~90 slots and forces them all to be bargain-bin
+   filler. Two ceilings apply to every pick:
+
+     1. A hard ceiling of MAX_BUDGET_SHARE of the whole budget, so there
+        is never a single whale card dominating the deck.
+     2. A dynamic ceiling of SPLURGE_FACTOR x the average spend still
+        available per unfilled slot. This rises as cheap picks bank
+        savings, so the deck can still afford a few genuine chase cards
+        later on — just never one that swallows the whole budget.
+
+   Together these produce the spread of expensive / mid / cheap cards a
+   real decklist has, instead of one whale plus 90 commons.
+---------------------------------------------------------------------- */
+const MAX_BUDGET_SHARE = 0.22;
+const SPLURGE_FACTOR = 9;
+// Stop the upgrade pass once we're this close to the budget, so the last
+// slice of budget stays unspent and decks keep some deck-to-deck variety
+// rather than every build converging on the same "most popular" list.
+const BUDGET_SLACK_TARGET = 0.05;
+
+function cheapestFirst(list, cardData, priceSource) {
+  return [...list].sort(
+    (a, b) =>
+      (priceOf(a.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE) -
+      (priceOf(b.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE)
+  );
+}
+
+function perCardCap(budgetState) {
+  if (!budgetState.active) return Infinity;
+  const slots = Math.max(1, budgetState.slotsRemaining);
+  const dynamic = (budgetState.remaining / slots) * SPLURGE_FACTOR;
+  const hard = budgetState.total * MAX_BUDGET_SHARE;
+  return Math.min(Math.max(dynamic, 0), hard);
+}
+
+function spend(budgetState, price) {
+  budgetState.remaining -= price;
+  budgetState.slotsRemaining = Math.max(0, budgetState.slotsRemaining - 1);
+}
+
 // Orders candidates priciest-first (no budget, favoring strong staples) or,
 // under an active budget, purely by popularity — letting pickWithinBudget
 // spend up toward the budget on the best/most popular affordable cards,
@@ -303,27 +371,50 @@ function orderCandidates(list, cardData, priceSource, preferExpensive) {
   });
 }
 
-// Picks `target` cards from an already-ordered list. Under an active budget it
-// greedily keeps within the shared remaining budget, only reaching past it if
-// there aren't enough affordable cards left to fill the required slot count.
-function pickWithinBudget(ordered, target, cardData, priceSource, budgetState) {
+/* Picks `target` cards from an already-ordered list.
+
+   Under a budget, every slot is charged only the DIFFERENCE between the
+   card taken and the cheapest card that could have filled that slot. The
+   cheapest legal fill is paid for up front (see baselineCost in buildDeck),
+   so what's tracked here is purely the upgrade money. That's what keeps a
+   tight budget honest: the builder can never spend money it will need for
+   the slots it hasn't filled yet, which is what used to force the last few
+   picks to overshoot. */
+function pickWithinBudget(ordered, target, cardData, priceSource, budgetState, cheapSorted) {
   if (!budgetState.active) return ordered.slice(0, target);
 
+  const priceFor = (c) => priceOf(c.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE;
+  const baselineAt = (i) => (cheapSorted && cheapSorted[i] ? priceFor(cheapSorted[i]) : 0);
+
   const chosen = [];
+  const taken = new Set();
+
   for (const card of ordered) {
     if (chosen.length >= target) break;
-    const price = priceOf(card.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE;
-    if (price <= budgetState.remaining) {
-      chosen.push(card);
-      budgetState.remaining -= price;
-    }
+    const price = priceFor(card);
+    // Skip anything over the per-card ceiling even when it's affordable —
+    // there's nearly always a cheaper card doing a similar job, and taking
+    // the whale here is exactly what starved every later slot.
+    if (price > perCardCap(budgetState)) continue;
+    const delta = price - baselineAt(chosen.length);
+    if (delta > budgetState.discretionary) continue;
+    chosen.push(card);
+    taken.add(card);
+    budgetState.discretionary -= delta;
+    spend(budgetState, price);
   }
-  if (chosen.length < target) {
-    for (const card of ordered) {
+
+  // Any slots still open get the cheapest cards left, which by definition
+  // costs no more than the baseline already set aside for them.
+  if (chosen.length < target && cheapSorted) {
+    for (const card of cheapSorted) {
       if (chosen.length >= target) break;
-      if (chosen.includes(card)) continue;
+      if (taken.has(card)) continue;
+      const price = priceFor(card);
+      budgetState.discretionary -= price - baselineAt(chosen.length);
       chosen.push(card);
-      budgetState.remaining -= priceOf(card.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE;
+      taken.add(card);
+      spend(budgetState, price);
     }
   }
   return chosen;
@@ -344,6 +435,81 @@ function pullStaples(candidates, names) {
     .filter(Boolean);
   const rest = candidates.filter((c) => !staples.includes(c));
   return { staples, rest };
+}
+
+/* Capping each card keeps any one of them from swallowing the budget, but
+   on its own it tends to leave money unspent. This pass puts that leftover
+   to work: it repeatedly finds the least-played card currently in the deck
+   and trades it for the most expensive unused card that is BOTH better
+   played and still under the per-card ceiling. The result spends up toward
+   the budget on genuinely stronger cards, rather than panic-filling with
+   whatever was cheapest. It deliberately stops a little short of the full
+   budget so decks don't all converge on an identical "top cards" list. */
+function upgradeWithinBudget(picks, categoryCards, usedNames, cardData, priceSource, budgetState) {
+  if (!budgetState.active) return;
+
+  const ranks = {};
+  Object.entries(categoryCards).forEach(([cat, list]) => {
+    ranks[cat] = new Map(list.map((c, i) => [c.name.toLowerCase(), i]));
+  });
+
+  const floor = budgetState.total * BUDGET_SLACK_TARGET;
+  let guard = 0;
+  let improved = true;
+
+  while (improved && guard++ < 400 && budgetState.discretionary > floor) {
+    improved = false;
+
+    for (const cat of Object.keys(picks)) {
+      if (budgetState.discretionary <= floor) break;
+      const list = categoryCards[cat] || [];
+      const rank = ranks[cat];
+      const chosen = picks[cat];
+      if (!list.length || !chosen || !chosen.length) continue;
+
+      // The weakest card we currently hold in this category.
+      let worstIdx = -1;
+      let worstRank = -1;
+      chosen.forEach((c, i) => {
+        const r = rank.get(c.name.toLowerCase()) ?? Infinity;
+        if (r > worstRank) {
+          worstRank = r;
+          worstIdx = i;
+        }
+      });
+      if (worstIdx < 0) continue;
+
+      const worst = chosen[worstIdx];
+      // Never trade away a guaranteed staple like Sol Ring.
+      if ((AUTO_INCLUDES[cat] || []).some((n) => n.toLowerCase() === worst.name.toLowerCase())) continue;
+      const worstPrice = priceOf(worst.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE;
+
+      // Best swap = most expensive unused card that is still more played
+      // than what we'd drop, affordable, and under the per-card ceiling.
+      const cap = perCardCap(budgetState);
+      let best = null;
+      let bestPrice = worstPrice;
+      for (const cand of list) {
+        const key = cand.name.toLowerCase();
+        if (usedNames.has(key)) continue;
+        if ((rank.get(key) ?? Infinity) >= worstRank) continue;
+        const p = priceOf(cand.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE;
+        if (p > cap) continue;
+        if (p <= bestPrice) continue;
+        if (p - worstPrice > budgetState.discretionary) continue;
+        best = cand;
+        bestPrice = p;
+      }
+      if (!best) continue;
+
+      chosen[worstIdx] = best;
+      usedNames.delete(worst.name.toLowerCase());
+      usedNames.add(best.name.toLowerCase());
+      budgetState.discretionary -= bestPrice - worstPrice;
+      budgetState.remaining -= bestPrice - worstPrice;
+      improved = true;
+    }
+  }
 }
 
 async function buildDeck(commander, style, bracket, opts = {}) {
@@ -376,7 +542,38 @@ async function buildDeck(commander, style, bracket, opts = {}) {
   nonbasicPool.forEach((c) => { cardData[c.name.toLowerCase()] = c; });
 
   const budgetActive = budget != null && budget > 0 && priceSource !== "none";
-  const budgetState = { active: budgetActive, remaining: budgetActive ? budget : Infinity };
+  // Basics are effectively free, so the budget really has to cover the
+  // nonland cards plus the handful of nonbasic lands — that's the slot
+  // count the per-card ceiling is averaged over.
+  const pricedSlots = NONLAND_TARGET + (identity.length > 1 ? 4 : 1) + (bracket.id - 1);
+  const nonbasicTargetCount = Math.min(nonbasicPool.length, (identity.length > 1 ? 4 : 1) + (bracket.id - 1));
+
+  /* What the cheapest legal version of this deck would cost: the mandatory
+     staples plus the cheapest available card for every remaining slot. The
+     budget has to cover this no matter what, so only the money ABOVE it is
+     genuinely available to spend on upgrades. Working from that figure is
+     what lets a tight budget land as close to the target as the card pool
+     allows, instead of overspending early and being forced past it at the
+     end. */
+  const priceFor = (c) => priceOf(c.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE;
+  const sumOf = (arr) => arr.reduce((s, c) => s + priceFor(c), 0);
+  let baselineCost = 0;
+  catKeys.forEach((cat) => {
+    const { staples, rest } = pullStaples(categoryCards[cat], AUTO_INCLUDES[cat] || []);
+    const need = Math.max(0, recipe[cat] - staples.length);
+    baselineCost += sumOf(staples) + sumOf(cheapestFirst(rest, cardData, priceSource).slice(0, need));
+  });
+  baselineCost += sumOf(cheapestFirst(nonbasicPool, cardData, priceSource).slice(0, nonbasicTargetCount));
+
+  const budgetState = {
+    active: budgetActive,
+    total: budgetActive ? budget : Infinity,
+    remaining: budgetActive ? budget : Infinity,
+    slotsRemaining: pricedSlots,
+    // Money available above the cheapest legal build. Zero means the budget
+    // barely covers (or can't cover) a legal 99 — build the cheapest version.
+    discretionary: budgetActive ? Math.max(0, budget - baselineCost) : Infinity,
+  };
   const preferExpensive = !budgetActive;
 
   catKeys.forEach((cat) => {
@@ -384,12 +581,13 @@ async function buildDeck(commander, style, bracket, opts = {}) {
     const { staples, rest } = pullStaples(rawCandidates, AUTO_INCLUDES[cat] || []);
 
     const orderedRest = orderCandidates(rest, cardData, priceSource, preferExpensive);
+    const cheapRest = cheapestFirst(rest, cardData, priceSource);
     const remainingTarget = Math.max(0, recipe[cat] - staples.length);
-    const filled = pickWithinBudget(orderedRest, remainingTarget, cardData, priceSource, budgetState);
+    const filled = pickWithinBudget(orderedRest, remainingTarget, cardData, priceSource, budgetState, cheapRest);
 
     if (budgetState.active) {
       staples.forEach((c) => {
-        budgetState.remaining -= priceOf(c.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE;
+        spend(budgetState, priceOf(c.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE);
       });
     }
 
@@ -407,18 +605,24 @@ async function buildDeck(commander, style, bracket, opts = {}) {
     identity.length > 1 ? pullStaples(nonbasicRawFiltered, ["Command Tower"]) : { staples: [], rest: nonbasicRawFiltered };
 
   const nonbasicCandidates = orderCandidates(nonbasicRest, cardData, priceSource, preferExpensive);
+  const cheapNonbasics = cheapestFirst(nonbasicRest, cardData, priceSource);
   const nonbasicBase = identity.length > 1 ? 4 : 1;
   const nonbasicRestTarget = Math.max(0, Math.min(nonbasicCandidates.length, nonbasicBase + (bracket.id - 1)) - landStaples.length);
-  const nonbasicsFilled = pickWithinBudget(nonbasicCandidates, nonbasicRestTarget, cardData, priceSource, budgetState);
+  const nonbasicsFilled = pickWithinBudget(nonbasicCandidates, nonbasicRestTarget, cardData, priceSource, budgetState, cheapNonbasics);
 
   if (budgetState.active) {
     landStaples.forEach((c) => {
-      budgetState.remaining -= priceOf(c.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE;
+      spend(budgetState, priceOf(c.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE);
     });
   }
 
   const nonbasicsChosen = [...landStaples, ...nonbasicsFilled];
   nonbasicsChosen.forEach((c) => usedNames.add(c.name.toLowerCase()));
+
+  // Everything is picked and capped — now put any leftover budget to work
+  // on better cards instead of leaving it unspent.
+  upgradeWithinBudget(picks, categoryCards, usedNames, cardData, priceSource, budgetState);
+
   const nonbasics = nonbasicsChosen.map((l) => ({ name: l.name, qty: 1 }));
 
   const basicsNeeded = landTarget - nonbasics.length;
@@ -1232,7 +1436,7 @@ export default function CommandForge() {
                     </div>
                     <p className="text-xs text-white/40 mt-2 leading-relaxed">
                       {budgetInput.trim()
-                        ? "The builder will favor the cheapest eligible card in each slot to try to stay under this total."
+                        ? "The builder spreads this across the whole deck — no single card takes more than about a fifth of it — then spends up toward the total on stronger cards."
                         : "Leave this blank and the builder favors pricier, higher-power staples instead of budget alternatives."}
                     </p>
                   </div>

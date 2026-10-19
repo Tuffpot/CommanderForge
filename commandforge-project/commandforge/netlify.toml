@@ -1,9 +1,16 @@
 [build]
-  command = "npm install && npm run build"
+  command = "npm ci && npm run build"
   publish = "dist"
 
 [build.environment]
   NODE_VERSION = "20"
+
+# Browsers and bots ask for /favicon.ico by default; send them the SVG icon
+# instead of a "not found".
+[[redirects]]
+  from = "/favicon.ico"
+  to = "/favicon.svg"
+  status = 301
 
 # Security headers sent with every page. Netlify already serves the site over
 # HTTPS; HSTS tells browsers to always use HTTPS from now on, and the rest

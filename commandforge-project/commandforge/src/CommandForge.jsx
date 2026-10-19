@@ -976,12 +976,15 @@ function CardRow({ name, qty, cardData, priceSource, onPreview }) {
     <button
       ref={rowRef}
       onClick={() => onPreview({ name, ...(data || {}) })}
-      onMouseEnter={() => {
-        if (!showThumb || !data?.imageLarge) return;
+      // Pointer events rather than mouse events: on a phone a tap also fires
+      // mouseenter but never mouseleave, which left the hover image stuck on
+      // screen on top of the tap-to-preview popup.
+      onPointerEnter={(e) => {
+        if (e.pointerType !== "mouse" || !showThumb || !data?.imageLarge) return;
         updateRect();
         setHover(true);
       }}
-      onMouseLeave={() => setHover(false)}
+      onPointerLeave={() => setHover(false)}
       className={`w-full flex items-center gap-2.5 text-left rounded-lg -mx-1 px-1 py-1 transition ${
         showThumb ? "hover:bg-white/5 cursor-pointer" : "cursor-default"
       }`}
@@ -1021,13 +1024,13 @@ function CardRow({ name, qty, cardData, priceSource, onPreview }) {
 function PreviewImage({ imageUrl, name }) {
   if (!imageUrl) {
     return (
-      <div className="w-full aspect-[5/7] rounded-xl mb-4 bg-white/5 border border-white/10 flex flex-col items-center justify-center gap-2 text-white/30">
+      <div className="w-full max-h-[60vh] aspect-[5/7] rounded-xl mb-4 bg-white/5 border border-white/10 flex flex-col items-center justify-center gap-2 text-white/30">
         <ImageOff size={28} />
         <span className="text-xs">Image unavailable</span>
       </div>
     );
   }
-  return <img src={imageUrl} alt={name} className="w-full rounded-xl mb-4" />;
+  return <img src={imageUrl} alt={name} className="w-full max-h-[60vh] object-contain rounded-xl mb-4" />;
 }
 
 function CommanderArt({ imageUrl }) {
@@ -1490,8 +1493,13 @@ export default function CommandForge() {
                 <Loader2 size={16} className="animate-spin text-white/30" />
               ) : session ? (
                 <button
-                  onClick={handleSignOut}
+                  onClick={() => {
+                    // On a phone this is a lone icon with no email beside it,
+                    // so a tap meant to check the account shouldn't sign out.
+                    if (window.confirm(`Sign out of ${session.user.email}?`)) handleSignOut();
+                  }}
                   title={session.user.email}
+                  aria-label="Sign out"
                   className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold text-white/70 hover:text-white transition"
                 >
                   <User size={14} />
@@ -1515,7 +1523,7 @@ export default function CommandForge() {
           </div>
         </header>
 
-        <main className="max-w-3xl mx-auto px-5 py-12">
+        <main className="max-w-3xl mx-auto px-4 sm:px-5 py-8 sm:py-12">
           {view === "setup" && (
             <div className="cf-fade">
               <div className="text-center mb-10">
@@ -1529,7 +1537,7 @@ export default function CommandForge() {
                 </p>
               </div>
 
-              <div className="cf-panel rounded-2xl p-6 mb-5">
+              <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-5">
                 <div className="relative mb-2">
                   <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/35" />
                   <input
@@ -1544,7 +1552,7 @@ export default function CommandForge() {
                       resolveAndForgeFromSearch();
                     }}
                     placeholder="Search any commander ever printed…"
-                    className="w-full bg-black/40 border border-white/15 rounded-xl pl-10 pr-3 py-3.5 text-sm text-white placeholder-white/35 outline-none focus:border-[#E3B25C]/60"
+                    className="w-full bg-black/40 border border-white/15 rounded-xl pl-10 pr-3 py-3.5 text-base sm:text-sm text-white placeholder-white/35 outline-none focus:border-[#E3B25C]/60"
                   />
                 </div>
                 <p className="text-[11px] text-white/30 mb-2">Live search via Scryfall — every legal commander, not a fixed list.</p>
@@ -1552,7 +1560,7 @@ export default function CommandForge() {
                 {selectedCommander && (
                   <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-purple-400/50 bg-purple-500/10 mb-1">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{selectedCommander.name}</p>
+                      <p className="text-sm font-semibold text-white break-words">{selectedCommander.name}</p>
                       <p className="text-xs text-white/50 truncate">{selectedCommander.blurb}</p>
                     </div>
                     <ColorPips identity={selectedCommander.identity} size="sm" />
@@ -1585,7 +1593,7 @@ export default function CommandForge() {
                         className="w-full text-left px-4 py-2.5 rounded-xl border border-transparent bg-black/30 hover:border-white/15 flex items-center justify-between gap-3 transition"
                       >
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white truncate">{c.name}</p>
+                          <p className="text-sm font-semibold text-white break-words">{c.name}</p>
                           <p className="text-xs text-white/50 truncate">{c.blurb}</p>
                         </div>
                         <ColorPips identity={c.identity} size="sm" />
@@ -1595,7 +1603,7 @@ export default function CommandForge() {
                 )}
               </div>
 
-              <div className="cf-panel rounded-2xl p-6 mb-5">
+              <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-5">
                 <p className="text-xs text-white/50 mb-4 tracking-widest font-semibold uppercase">Power Bracket</p>
                 <div className="grid grid-cols-2 gap-3">
                   {BRACKETS.map((b) => (
@@ -1615,7 +1623,7 @@ export default function CommandForge() {
                 </div>
               </div>
 
-              <div className="cf-panel rounded-2xl p-6 mb-5">
+              <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-5">
                 <p className="text-xs text-white/50 mb-4 tracking-widest font-semibold uppercase">Deck Style</p>
                 <button
                   onClick={() => setInspired((v) => !v)}
@@ -1634,7 +1642,7 @@ export default function CommandForge() {
                 </button>
               </div>
 
-              <div className="cf-panel rounded-2xl p-6 mb-5">
+              <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-5">
                 <p className="text-xs text-white/50 mb-4 tracking-widest font-semibold uppercase">Card Images & Pricing</p>
                 <div className="flex flex-col sm:flex-row gap-2">
                   {[
@@ -1675,7 +1683,7 @@ export default function CommandForge() {
                         value={budgetInput}
                         onChange={(e) => setBudgetInput(e.target.value)}
                         placeholder="No limit — leans into pricier staples"
-                        className="w-full bg-black/40 border border-white/15 rounded-xl pl-7 pr-3 py-3 text-sm text-white placeholder-white/35 outline-none focus:border-[#E3B25C]/60"
+                        className="w-full bg-black/40 border border-white/15 rounded-xl pl-7 pr-3 py-3 text-base sm:text-sm text-white placeholder-white/35 outline-none focus:border-[#E3B25C]/60"
                       />
                     </div>
                     <p className="text-xs text-white/40 mt-2 leading-relaxed">
@@ -1702,14 +1710,14 @@ export default function CommandForge() {
                 <div className="h-px bg-white/10 flex-1" />
               </div>
 
-              <div className="cf-panel rounded-2xl p-6 mb-8">
-                <div className="flex justify-center gap-3 mb-4">
+              <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-8">
+                <div className="flex justify-center gap-2 sm:gap-3 mb-4">
                   {["W", "U", "B", "R", "G", "C"].map((c) => (
                     <button
                       key={c}
                       onClick={() => toggleColor(c)}
                       title={COLOR_META[c].label}
-                      className={`w-11 h-11 rounded-full border-2 flex items-center justify-center font-bold text-sm transition ${
+                      className={`w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-full border-2 flex items-center justify-center font-bold text-sm transition ${
                         colorFilter.includes(c) ? "border-transparent" : "border-white/20 text-white/50 hover:border-white/40"
                       }`}
                       style={colorFilter.includes(c) ? { backgroundColor: COLOR_META[c].swatch, color: "#1a1225" } : {}}
@@ -1724,7 +1732,7 @@ export default function CommandForge() {
                     value={houseName}
                     onChange={(e) => setHouseName(e.target.value)}
                     placeholder="Or type a house name — Azorius, Grixis…"
-                    className="w-full bg-black/40 border border-white/15 rounded-xl pl-10 pr-3 py-3 text-sm text-white placeholder-white/35 outline-none focus:border-[#E3B25C]/60"
+                    className="w-full bg-black/40 border border-white/15 rounded-xl pl-10 pr-3 py-3 text-base sm:text-sm text-white placeholder-white/35 outline-none focus:border-[#E3B25C]/60"
                   />
                 </div>
                 <p className="text-center text-xs text-white/40 mb-4">
@@ -1749,7 +1757,7 @@ export default function CommandForge() {
                     value={theme}
                     onChange={(e) => setTheme(e.target.value)}
                     placeholder="e.g. lifegain, voltron, dragons, mill…"
-                    className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-3 text-sm text-white placeholder-white/35 outline-none focus:border-[#E3B25C]/60"
+                    className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-3 text-base sm:text-sm text-white placeholder-white/35 outline-none focus:border-[#E3B25C]/60"
                   />
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {THEME_SUGGESTIONS.map((s) => (
@@ -1822,7 +1830,7 @@ export default function CommandForge() {
                 <ChevronLeft size={16} /> Back
               </button>
 
-              <div className="cf-panel rounded-2xl p-6 mb-6">
+              <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-6">
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <span className="cf-mono text-[11px] cf-gold font-semibold tracking-wide">
                     {deck.style === "edhrec" ? "EDHREC-INSPIRED" : "RANDOM BUILD"}
@@ -2042,13 +2050,15 @@ export default function CommandForge() {
                         <ColorPips identity={d.identity} size="sm" />
                         <button
                           onClick={() => setViewingSaved(viewingSaved?.id === d.id ? null : d)}
-                          className="text-xs font-semibold cf-gold hover:text-white underline underline-offset-2"
+                          className="py-2 px-1 text-xs font-semibold cf-gold hover:text-white underline underline-offset-2"
                         >
                           {viewingSaved?.id === d.id ? "Hide" : "View"}
                         </button>
                         <button
-                          onClick={() => deleteDeck(d.id)}
-                          className="text-xs font-semibold text-red-400/80 hover:text-red-300 underline underline-offset-2"
+                          onClick={() => {
+                            if (window.confirm(`Delete "${d.deckName}"? This can't be undone.`)) deleteDeck(d.id);
+                          }}
+                          className="py-2 px-1 text-xs font-semibold text-red-400/80 hover:text-red-300 underline underline-offset-2"
                         >
                           Delete
                         </button>
@@ -2118,14 +2128,14 @@ export default function CommandForge() {
       </div>
 
       {saveModalOpen && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-6 z-20">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 sm:p-6 z-20 overflow-y-auto">
           <div className="cf-panel rounded-2xl p-6 w-full max-w-sm">
             <h3 className="cf-display text-lg text-white mb-4">Name This Deck</h3>
             <input
               value={deckName}
               onChange={(e) => setDeckName(e.target.value)}
               placeholder={`${deck?.commander.name} Deck`}
-              className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/35 mb-2 outline-none focus:border-[#E3B25C]/60"
+              className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-2.5 text-base sm:text-sm text-white placeholder-white/35 mb-2 outline-none focus:border-[#E3B25C]/60"
               autoFocus
             />
             {deckSaveError && <p className="text-xs text-red-300/80 mb-2">{deckSaveError}</p>}
@@ -2148,11 +2158,11 @@ export default function CommandForge() {
       )}
 
       {authModalOpen && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-6 z-20" onClick={() => setAuthModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 sm:p-6 z-20 overflow-y-auto" onClick={() => setAuthModalOpen(false)}>
           <div className="cf-panel rounded-2xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="cf-display text-lg text-white">{authMode === "signup" ? "Create Account" : "Sign In"}</h3>
-              <button onClick={() => setAuthModalOpen(false)} className="text-white/40 hover:text-white transition">
+              <button onClick={() => setAuthModalOpen(false)} className="-m-2 p-2 text-white/40 hover:text-white transition" aria-label="Close">
                 <X size={18} />
               </button>
             </div>
@@ -2183,7 +2193,7 @@ export default function CommandForge() {
                 value={authEmail}
                 onChange={(e) => setAuthEmail(e.target.value)}
                 placeholder="Email"
-                className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/35 mb-2 outline-none focus:border-purple-400/60"
+                className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-2.5 text-base sm:text-sm text-white placeholder-white/35 mb-2 outline-none focus:border-purple-400/60"
               />
               <input
                 type="password"
@@ -2192,7 +2202,7 @@ export default function CommandForge() {
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
                 placeholder="Password"
-                className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/35 mb-3 outline-none focus:border-purple-400/60"
+                className="w-full bg-black/40 border border-white/15 rounded-xl px-3 py-2.5 text-base sm:text-sm text-white placeholder-white/35 mb-3 outline-none focus:border-purple-400/60"
               />
 
               {authNotice && <p className="text-xs cf-gold mb-3">{authNotice}</p>}
@@ -2212,10 +2222,10 @@ export default function CommandForge() {
       )}
 
       {previewCard && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-6 z-20" onClick={() => setPreviewCard(null)}>
-          <div className="cf-panel rounded-2xl p-5 w-full max-w-xs" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 sm:p-6 z-20" onClick={() => setPreviewCard(null)}>
+          <div className="cf-panel rounded-2xl p-5 w-full max-w-xs max-h-full overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-end mb-2">
-              <button onClick={() => setPreviewCard(null)} className="text-white/40 hover:text-white transition">
+              <button onClick={() => setPreviewCard(null)} className="-m-2 p-2 text-white/40 hover:text-white transition" aria-label="Close">
                 <X size={18} />
               </button>
             </div>

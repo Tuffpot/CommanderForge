@@ -57,6 +57,8 @@ export default function CommandForge() {
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [decksLoading, setDecksLoading] = useState(false);
   const [deckSaveError, setDeckSaveError] = useState("");
+  const [accountDeleting, setAccountDeleting] = useState(false);
+  const [accountDeleteError, setAccountDeleteError] = useState("");
 
   // Track the Supabase auth session for the lifetime of the app.
   useEffect(() => {
@@ -145,6 +147,24 @@ export default function CommandForge() {
 
   async function handleSignOut() {
     await supabase.auth.signOut();
+  }
+
+  // Permanently deletes the signed-in account and its saved decks (the app
+  // stores require an in-app way to do this). The delete_my_account database
+  // function does the work; see the README for its SQL.
+  async function deleteAccount() {
+    setAccountDeleteError("");
+    setAccountDeleting(true);
+    const { error } = await supabase.rpc("delete_my_account");
+    setAccountDeleting(false);
+    if (error) {
+      setAccountDeleteError("Couldn't delete your account. Please try again, or contact us if it keeps happening.");
+      return;
+    }
+    setViewingSaved(null);
+    setSavedDecks([]);
+    // The account is gone, so only the local sign-in needs clearing.
+    await supabase.auth.signOut({ scope: "local" });
   }
 
   // Live-search commanders on Scryfall as the person types. Skips the call
@@ -504,7 +524,10 @@ export default function CommandForge() {
             <MyDecksView
               cardmarketCopied={cardmarketCopied}
               copyForCardmarket={copyForCardmarket}
+              accountDeleteError={accountDeleteError}
+              accountDeleting={accountDeleting}
               decksLoading={decksLoading}
+              deleteAccount={deleteAccount}
               deleteDeck={deleteDeck}
               openAuthModal={openAuthModal}
               savedDecks={savedDecks}

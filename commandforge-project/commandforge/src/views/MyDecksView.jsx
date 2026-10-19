@@ -1,12 +1,15 @@
-import { Check, ClipboardCopy, Loader2, User } from "lucide-react";
+import { Check, ClipboardCopy, Loader2, Trash2, User } from "lucide-react";
 import CardRow from "../components/CardRow";
 import ColorPips from "../components/ColorPips";
 import { CAT_LABELS } from "../lib/buildDeck";
 
 export default function MyDecksView({
+  accountDeleteError,
+  accountDeleting,
   cardmarketCopied,
   copyForCardmarket,
   decksLoading,
+  deleteAccount,
   deleteDeck,
   openAuthModal,
   savedDecks,
@@ -134,6 +137,28 @@ export default function MyDecksView({
           </div>
         ))}
       </div>
+
+      {session && (
+        <div className="mt-10 pt-6 border-t border-white/10">
+          <p className="text-xs text-white/40 mb-3">Signed in as {session.user.email}</p>
+          <button
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Delete your account (${session.user.email}) and all your saved decks? This can't be undone.`
+                )
+              )
+                deleteAccount();
+            }}
+            disabled={accountDeleting}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-400/40 text-red-300/90 hover:bg-red-500/10 disabled:opacity-50 transition text-xs font-semibold"
+          >
+            {accountDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            Delete my account
+          </button>
+          {accountDeleteError && <p className="text-xs text-red-300/80 mt-2">{accountDeleteError}</p>}
+        </div>
+      )}
     </div>
   );
 }

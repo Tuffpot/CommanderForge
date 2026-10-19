@@ -100,7 +100,7 @@ That's it — **Sign In** in the top-right should now let you create an account 
 
 ## Checking a change
 
-- `npm test` runs the automated tests in `src/lib/*.test.js`. They use a fake Scryfall, so they work offline.
+- `npm test` runs the automated tests in `src/lib/*.test.js`. They use a fake Scryfall, so they work offline. Netlify runs them before every deploy and stops the deploy if one fails.
 - `npm run lint` checks the code for mistakes such as a misspelt name.
 
 ## Putting it online for free (optional)

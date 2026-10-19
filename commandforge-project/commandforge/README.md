@@ -65,6 +65,31 @@ create policy "Users can delete their own decks"
 
 This creates the table and locks it down so each person can only ever see or touch their *own* saved decks — that's what "Row Level Security" (RLS) means.
 
+### 2b. Let people delete their account
+The app stores require a "Delete my account" button (it's at the bottom of **My Decks** when signed in). It needs this database function. In the **SQL Editor**, paste this and click **Run**:
+
+```sql
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Not signed in';
+  end if;
+  -- Saved decks go with it: decks.user_id cascades on delete.
+  delete from auth.users where id = auth.uid();
+end;
+$$;
+
+revoke execute on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;
+```
+
+It only ever deletes the account of the person who is signed in and pressing the button.
+
 ### 3. (Recommended for easy testing) Turn off email confirmation
 By default, Supabase makes new users click a confirmation link in their email before they can sign in. For a small personal project this is usually more friction than it's worth:
 

@@ -91,6 +91,18 @@ That's it — **Sign In** in the top-right should now let you create an account 
 
 **Note on the anon key:** it's fine that this key is visible in your app's code (even after hosting it publicly) — it's designed to be public. Real protection comes from the Row Level Security policies from step 2, not from hiding this key.
 
+## How the code is laid out
+
+- `src/CommandForge.jsx` holds the app's shared state and switches between screens.
+- `src/views/` has the three screens: setting up a deck, the finished deck, and My Decks.
+- `src/components/` has the header, pop-ups and small pieces like card rows.
+- `src/lib/` has the deck-building logic with no screen code: Scryfall searches (`scryfall.js`, `queries.js`), colours (`colors.js`), budget maths (`budget.js`) and the builder itself (`buildDeck.js`).
+
+## Checking a change
+
+- `npm test` runs the automated tests in `src/lib/*.test.js`. They use a fake Scryfall, so they work offline. Netlify runs them before every deploy and stops the deploy if one fails.
+- `npm run lint` checks the code for mistakes such as a misspelt name.
+
 ## Putting it online for free (optional)
 
 If you want a real public link instead of just running it locally:

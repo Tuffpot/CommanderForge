@@ -1,0 +1,13 @@
+{
+  "appId": "uk.co.commanderforge.app",
+  "appName": "Commander Forge",
+  "webDir": "dist",
+  "backgroundColor": "#0B0812",
+  "android": {
+    "backgroundColor": "#0B0812"
+  },
+  "ios": {
+    "backgroundColor": "#0B0812",
+    "contentInset": "always"
+  }
+}

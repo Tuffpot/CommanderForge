@@ -5,3 +5,9 @@
 html, body, #root {
   height: 100%;
 }
+
+/* Matches the app's dark background so there's no white flash while it loads,
+   or when the installed app scrolls past the edge. */
+html, body {
+  background-color: #0B0812;
+}

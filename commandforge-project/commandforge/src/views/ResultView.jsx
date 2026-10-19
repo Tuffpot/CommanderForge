@@ -1,5 +1,6 @@
 import { Check, ChevronLeft, ClipboardCopy, Loader2, Save } from "lucide-react";
 import { CommanderArt } from "../components/CardImages";
+import AdSlot from "../components/AdSlot";
 import CardRow from "../components/CardRow";
 import ColorPips from "../components/ColorPips";
 import { formatPrice, priceOf } from "../lib/budget";
@@ -151,6 +152,10 @@ export default function ResultView({
           </div>
         </div>
       </div>
+
+      {/* Kept well clear of the buttons below so nobody taps an ad by mistake,
+          which AdSense treats as invalid clicks. */}
+      <AdSlot className="mb-8" />
 
       <div className="flex flex-col sm:flex-row gap-3 mb-3">
         <button

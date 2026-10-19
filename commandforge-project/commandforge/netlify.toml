@@ -3,7 +3,7 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "20"
+  NODE_VERSION = "22"
 
 # Browsers and bots ask for /favicon.ico by default; send them the SVG icon
 # instead of a "not found".

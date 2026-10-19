@@ -1,0 +1,70 @@
+# Builds the Android and iOS apps whenever their code changes, to prove they
+# still compile. The Android job also uploads a test APK you can download from
+# the run's page and install on an Android phone.
+#
+# Sign-in only works in these builds if the repository has the secrets
+# VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (Settings > Secrets and
+# variables > Actions). Without them the app still builds decks.
+name: Mobile apps
+
+on:
+  pull_request:
+    paths:
+      - "commandforge-project/commandforge/**"
+      - ".github/workflows/mobile-apps.yml"
+  push:
+    branches: [main]
+    paths:
+      - "commandforge-project/commandforge/**"
+      - ".github/workflows/mobile-apps.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: commandforge-project/commandforge
+
+env:
+  VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+  VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: commandforge-project/commandforge/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - run: ./gradlew assembleDebug
+        working-directory: commandforge-project/commandforge/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: commander-forge-android-test
+          path: commandforge-project/commandforge/android/app/build/outputs/apk/debug/app-debug.apk
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: commandforge-project/commandforge/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync ios
+      - name: Build for the iPhone simulator (no signing needed)
+        run: >
+          xcodebuild -project ios/App/App.xcodeproj -scheme App
+          -sdk iphonesimulator -configuration Debug
+          -derivedDataPath build CODE_SIGNING_ALLOWED=NO build

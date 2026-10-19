@@ -111,3 +111,24 @@ If you want a real public link instead of just running it locally:
 - **Vercel**: connect this folder as a GitHub repo, import it at https://vercel.com/new — it auto-detects Vite and deploys it
 
 Both have generous free tiers and neither requires a credit card for a project this size. If you host it this way, remember to also add your `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables in that host's dashboard (both Netlify and Vercel have a place for this under project settings) — otherwise accounts won't work on the hosted version.
+
+## Installing it like an app
+
+**From the website (free, works today).** On an Android phone, open commanderforge.co.uk in Chrome and tap **Install app** (or menu > **Add to Home screen**). On an iPhone, open it in Safari, tap **Share** > **Add to Home Screen**. On a computer, Chrome and Edge show an install button in the address bar. It then opens full screen with its own icon, like any other app.
+
+**Store apps (Google Play and the App Store).** The `android/` and `ios/` folders are the store apps. They're built with [Capacitor](https://capacitorjs.com), which wraps this same website code in a native app, so any change to the site goes into the apps too the next time you build them.
+
+After changing the site, copy it into the apps with:
+
+```
+npm run app:sync
+```
+
+- **Android:** needs [Android Studio](https://developer.android.com/studio) (free, any computer). `npm run app:android` opens the project; use **Build > Generate Signed App Bundle** to make the file you upload to Google Play.
+- **iPhone:** needs a Mac with Xcode (free from the Mac App Store), or a cloud build service. `npm run app:ios` opens the project in Xcode; use **Product > Archive** to upload to App Store Connect.
+
+Make sure your `.env` file has the Supabase values before building, or sign-in won't work in the app.
+
+The **Mobile apps** check on GitHub builds both apps on every change. Each run's page has a test Android APK to download and install on a phone.
+
+To change the app icon or splash screen, replace the images in `assets/` and run `npx @capacitor/assets generate`.

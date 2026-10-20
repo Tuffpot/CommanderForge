@@ -141,11 +141,10 @@ Both have generous free tiers and neither requires a credit card for a project t
 
 The site is ready for Google AdSense but shows no ads until you switch it on:
 
-1. Before applying, fill in your name and contact email in `public/privacy.html` (search for `TODO`).
-2. Sign up at https://adsense.google.com with `commanderforge.co.uk` as your site.
-3. In Netlify, under Site configuration → Environment variables, add `VITE_ADSENSE_CLIENT` with your `ca-pub-…` publisher ID, then redeploy. This adds the ownership tag and the `ads.txt` file AdSense checks for. Then press "Verify" in AdSense and request a review.
-4. In AdSense → Privacy & messaging, create a "European regulations" message for the UK and EU. That is the cookie consent pop-up; the site has no banner of its own. The "Cookie settings" link in the footer reopens it.
-5. Once approved, either turn on Auto ads in AdSense, or make a display ad unit under Ads → By ad unit and add its number as `VITE_ADSENSE_SLOT` in Netlify to show it under each forged deck.
+1. Sign up at https://adsense.google.com with `commanderforge.co.uk` as your site.
+2. In Netlify, under Site configuration → Environment variables, add `VITE_ADSENSE_CLIENT` with your `ca-pub-…` publisher ID, then redeploy. This adds the ownership tag and the `ads.txt` file AdSense checks for. Then press "Verify" in AdSense and request a review.
+3. In AdSense → Privacy & messaging, create a "European regulations" message for the UK and EU. That is the cookie consent pop-up; the site has no banner of its own. The "Cookie settings" link in the footer reopens it.
+4. Once approved, either turn on Auto ads in AdSense, or make a display ad unit under Ads → By ad unit and add its number as `VITE_ADSENSE_SLOT` in Netlify to show it under each forged deck.
 
 Ads never load in the Android or iOS app, since AdSense is for websites only.
 

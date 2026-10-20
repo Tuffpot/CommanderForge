@@ -4,6 +4,8 @@ import { buildNameQuery, filterAndSortByName, buildColorQuery, resolveThemeQuery
 import { scryfallSearchCommanders, scryfallRandomCommander } from "./lib/scryfall";
 import { buildDeck } from "./lib/buildDeck";
 import Header from "./components/Header";
+import Footer from "./components/Footer";
+import { loadAdSense } from "./lib/ads";
 import SaveDeckModal from "./components/SaveDeckModal";
 import AuthModal from "./components/AuthModal";
 import CardPreviewModal from "./components/CardPreviewModal";
@@ -16,6 +18,10 @@ import MyDecksView from "./views/MyDecksView";
    UI
 --------------------------------------------------------- */
 export default function CommandForge() {
+  // Loads Google's ad script (and with it the cookie consent message) when
+  // AdSense is configured; does nothing otherwise.
+  useEffect(() => loadAdSense(), []);
+
   const [view, setView] = useState("setup");
   const [search, setSearch] = useState("");
   const [selectedCommander, setSelectedCommander] = useState(null);
@@ -538,6 +544,7 @@ export default function CommandForge() {
             />
           )}
         </main>
+        <Footer />
       </div>
 
       {saveModalOpen && (

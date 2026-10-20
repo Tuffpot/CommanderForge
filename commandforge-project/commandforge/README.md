@@ -137,6 +137,17 @@ If you want a real public link instead of just running it locally:
 
 Both have generous free tiers and neither requires a credit card for a project this size. If you host it this way, remember to also add your `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables in that host's dashboard (both Netlify and Vercel have a place for this under project settings) — otherwise accounts won't work on the hosted version.
 
+## Showing adverts (Google AdSense)
+
+The site is ready for Google AdSense but shows no ads until you switch it on:
+
+1. Sign up at https://adsense.google.com with `commanderforge.co.uk` as your site.
+2. In Netlify, under Site configuration → Environment variables, add `VITE_ADSENSE_CLIENT` with your `ca-pub-…` publisher ID, then redeploy. This adds the ownership tag and the `ads.txt` file AdSense checks for. Then press "Verify" in AdSense and request a review.
+3. In AdSense → Privacy & messaging, create a "European regulations" message for the UK and EU. That is the cookie consent pop-up; the site has no banner of its own. The "Cookie settings" link in the footer reopens it.
+4. Once approved, either turn on Auto ads in AdSense, or make a display ad unit under Ads → By ad unit and add its number as `VITE_ADSENSE_SLOT` in Netlify to show it under each forged deck.
+
+Ads never load in the Android or iOS app, since AdSense is for websites only.
+
 ## Installing it like an app
 
 **From the website (free, works today).** On an Android phone, open commanderforge.co.uk in Chrome and tap **Install app** (or menu > **Add to Home screen**). On an iPhone, open it in Safari, tap **Share** > **Add to Home Screen**. On a computer, Chrome and Edge show an install button in the address bar. It then opens full screen with its own icon, like any other app.

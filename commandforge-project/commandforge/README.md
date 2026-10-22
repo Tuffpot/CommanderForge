@@ -1,4 +1,4 @@
-# Commander Forge
+# Brewhall
 
 A standalone EDH/Commander deck builder — runs as a real local web app instead of a Claude.ai artifact, so it isn't sandboxed and Scryfall's live pricing/images can actually load.
 
@@ -154,7 +154,7 @@ First, tell Supabase where people may be sent back to after signing in. Go to **
 **Google** (free):
 1. In Supabase, open **Authentication → Sign In / Providers → Google** and copy the **Callback URL** it shows (it looks like `https://your-project-ref.supabase.co/auth/v1/callback`).
 2. Go to https://console.cloud.google.com, create a project (any name), then open **Google Auth Platform** (or **APIs & Services → OAuth consent screen**).
-3. Fill in the app name (Commander Forge), your support email, and under **Authorised domains** add `commanderforge.co.uk` and `your-project-ref.supabase.co`. Choose **External** for the audience and publish the app, so anyone can sign in rather than just test users.
+3. Fill in the app name (Brewhall), your support email, and under **Authorised domains** add `commanderforge.co.uk` and `your-project-ref.supabase.co`. Choose **External** for the audience and publish the app, so anyone can sign in rather than just test users.
 4. Under **Clients**, click **Create client**, pick **Web application**, add `https://commanderforge.co.uk` under **Authorised JavaScript origins**, and paste the Callback URL from step 1 under **Authorised redirect URIs**. Create it.
 5. Copy the **Client ID** and **Client secret** into the Google page in Supabase, turn Google on, and save.
 

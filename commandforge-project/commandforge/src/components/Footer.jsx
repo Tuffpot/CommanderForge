@@ -15,7 +15,7 @@ export default function Footer() {
       </nav>
       {/* Wording required by Wizards of the Coast's Fan Content Policy. */}
       <p className="text-[11px] text-white/35 leading-relaxed">
-        Commander Forge is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by
+        Brewhall is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by
         Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
         Card data and images from Scryfall.
       </p>

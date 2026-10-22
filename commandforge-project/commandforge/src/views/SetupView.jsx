@@ -63,7 +63,7 @@ export default function SetupView({
           <Sparkles size={13} />
           POWERED BY LIVE SCRYFALL DATA
         </div>
-        <h1 className="cf-display text-4xl sm:text-5xl text-white mb-4 leading-tight">Commander Forge</h1>
+        <h1 className="cf-display text-4xl sm:text-5xl text-white mb-4 leading-tight">Brewhall</h1>
         <p className="text-white/60 text-base max-w-lg mx-auto leading-relaxed">
           Search a commander, pick a power bracket, and get a legal, playable 99-card decklist tuned for that level of play.
         </p>

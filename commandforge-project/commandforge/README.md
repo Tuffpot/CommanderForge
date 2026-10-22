@@ -148,14 +148,14 @@ That's it — **Sign In** in the top-right should now let you create an account 
 The sign-in pop-up shows **Continue with Google** and **Continue with Apple** buttons, but each one only appears once you switch it on in Supabase. Nothing changes until then.
 
 First, tell Supabase where people may be sent back to after signing in. Go to **Authentication → URL Configuration**:
-- **Site URL:** `https://commanderforge.co.uk`
-- **Redirect URLs:** add `https://commanderforge.co.uk`, `http://localhost:5173` (for testing on your own computer) and `uk.co.commanderforge.app://auth-callback` (for the Android and iPhone apps).
+- **Site URL:** `https://brewhall.co.uk`
+- **Redirect URLs:** add `https://brewhall.co.uk`, `http://localhost:5173` (for testing on your own computer) and `uk.co.commanderforge.app://auth-callback` (for the Android and iPhone apps).
 
 **Google** (free):
 1. In Supabase, open **Authentication → Sign In / Providers → Google** and copy the **Callback URL** it shows (it looks like `https://your-project-ref.supabase.co/auth/v1/callback`).
 2. Go to https://console.cloud.google.com, create a project (any name), then open **Google Auth Platform** (or **APIs & Services → OAuth consent screen**).
-3. Fill in the app name (Brewhall), your support email, and under **Authorised domains** add `commanderforge.co.uk` and `your-project-ref.supabase.co`. Choose **External** for the audience and publish the app, so anyone can sign in rather than just test users.
-4. Under **Clients**, click **Create client**, pick **Web application**, add `https://commanderforge.co.uk` under **Authorised JavaScript origins**, and paste the Callback URL from step 1 under **Authorised redirect URIs**. Create it.
+3. Fill in the app name (Brewhall), your support email, and under **Authorised domains** add `brewhall.co.uk` and `your-project-ref.supabase.co`. Choose **External** for the audience and publish the app, so anyone can sign in rather than just test users.
+4. Under **Clients**, click **Create client**, pick **Web application**, add `https://brewhall.co.uk` under **Authorised JavaScript origins**, and paste the Callback URL from step 1 under **Authorised redirect URIs**. Create it.
 5. Copy the **Client ID** and **Client secret** into the Google page in Supabase, turn Google on, and save.
 
 **Apple** (needs an Apple Developer account, which you already need for the App Store). The App Store requires this button in the iPhone app whenever Google sign-in is offered there, so switch it on before sending an iPhone build with Google sign-in for review.
@@ -193,7 +193,7 @@ Both have generous free tiers and neither requires a credit card for a project t
 
 The site is ready for Google AdSense but shows no ads until you switch it on:
 
-1. Sign up at https://adsense.google.com with `commanderforge.co.uk` as your site.
+1. Sign up at https://adsense.google.com with `brewhall.co.uk` as your site.
 2. In Netlify, under Site configuration → Environment variables, add `VITE_ADSENSE_CLIENT` with your `ca-pub-…` publisher ID, then redeploy. This adds the ownership tag and the `ads.txt` file AdSense checks for. Then press "Verify" in AdSense and request a review.
 3. In AdSense → Privacy & messaging, create a "European regulations" message for the UK and EU. That is the cookie consent pop-up; the site has no banner of its own. The "Cookie settings" link in the footer reopens it.
 4. Once approved, either turn on Auto ads in AdSense, or make a display ad unit under Ads → By ad unit and add its number as `VITE_ADSENSE_SLOT` in Netlify to show it under each forged deck.
@@ -202,7 +202,7 @@ Ads never load in the Android or iOS app, since AdSense is for websites only.
 
 ## Installing it like an app
 
-**From the website (free, works today).** On an Android phone, open commanderforge.co.uk in Chrome and tap **Install app** (or menu > **Add to Home screen**). On an iPhone, open it in Safari, tap **Share** > **Add to Home Screen**. On a computer, Chrome and Edge show an install button in the address bar. It then opens full screen with its own icon, like any other app.
+**From the website (free, works today).** On an Android phone, open brewhall.co.uk in Chrome and tap **Install app** (or menu > **Add to Home screen**). On an iPhone, open it in Safari, tap **Share** > **Add to Home Screen**. On a computer, Chrome and Edge show an install button in the address bar. It then opens full screen with its own icon, like any other app.
 
 **Store apps (Google Play and the App Store).** The `android/` and `ios/` folders are the store apps. They're built with [Capacitor](https://capacitorjs.com), which wraps this same website code in a native app, so any change to the site goes into the apps too the next time you build them.
 

@@ -90,6 +90,34 @@ grant execute on function public.delete_my_account() to authenticated;
 
 It only ever deletes the account of the person who is signed in and pressing the button.
 
+### 2c. Let people save their card collection
+**My Collection** (the Collection tab) saves each person's imported cards to their account. It needs this table. In the **SQL Editor**, paste this and click **Run**:
+
+```sql
+create table collections (
+  user_id uuid primary key default auth.uid() references auth.users(id) on delete cascade,
+  cards jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table collections enable row level security;
+
+create policy "Users can view their own collection"
+  on collections for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own collection"
+  on collections for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own collection"
+  on collections for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+```
+
+Each row holds one person's cards as a list of names and quantities. Deleting an account deletes its collection too. Without this table, signed-in people see "Couldn't load the collection saved to your account"; signed-out visitors' collections are kept in their browser either way.
+
 ### 3. (Recommended for easy testing) Turn off email confirmation
 By default, Supabase makes new users click a confirmation link in their email before they can sign in. For a small personal project this is usually more friction than it's worth:
 
@@ -143,9 +171,9 @@ The Android and iPhone apps open Google or Apple in an in-app browser, then come
 ## How the code is laid out
 
 - `src/CommandForge.jsx` holds the app's shared state and switches between screens.
-- `src/views/` has the three screens: setting up a deck, the finished deck, and My Decks.
+- `src/views/` has the four screens: setting up a deck, the finished deck, My Collection and My Decks.
 - `src/components/` has the header, pop-ups and small pieces like card rows.
-- `src/lib/` has the deck-building logic with no screen code: Scryfall searches (`scryfall.js`, `queries.js`), colours (`colors.js`), budget maths (`budget.js`) and the builder itself (`buildDeck.js`).
+- `src/lib/` has the deck-building logic with no screen code: Scryfall searches (`scryfall.js`, `queries.js`), colours (`colors.js`), budget maths (`budget.js`) and the builder itself (`buildDeck.js`), plus reading a card collection (`collection.js`) and building from one (`buildFromCollection.js`).
 
 ## Checking a change
 

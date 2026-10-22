@@ -7,12 +7,22 @@ import { formatPrice, priceOf } from "../lib/budget";
 import { CAT_LABELS } from "../lib/buildDeck";
 import { describeDeck } from "../lib/describeDeck";
 
+// Cards in a collection build the person doesn't own yet.
+function neededCount(deck) {
+  return Object.values(deck.picks).flat().filter((c) => c.missing).length + (deck.commanderOwned ? 0 : 1);
+}
+
+function suggestionCount(deck) {
+  return Object.values(deck.suggestions || {}).flat().length;
+}
+
 export default function ResultView({
   cardData,
   cardDataStatus,
   cardmarketCopied,
   cardmarketCopyError,
   copyForCardmarket,
+  copyNeededForCardmarket,
   deck,
   deckTotalPrice,
   openAuthModal,
@@ -33,6 +43,12 @@ export default function ResultView({
           <span className="cf-mono text-[11px] cf-gold font-semibold tracking-wide">
             {deck.style === "edhrec" ? "EDHREC-INSPIRED" : "RANDOM BUILD"}
           </span>
+          {deck.fromCollection && (
+            <>
+              <span className="text-white/30">·</span>
+              <span className="cf-mono text-[11px] text-green-300 font-semibold tracking-wide">FROM YOUR COLLECTION</span>
+            </>
+          )}
           <span className="text-white/30">·</span>
           <span className="cf-mono text-[11px] text-purple-300 font-semibold tracking-wide">
             BRACKET {deck.bracket.id} · {deck.bracket.name.toUpperCase()}
@@ -90,6 +106,25 @@ export default function ResultView({
         )}
       </div>
 
+      {cardDataStatus === "done" && deck.fromCollection && (
+        <div className="cf-panel rounded-xl p-4 mb-4">
+          <p className="text-xs text-white/60 leading-relaxed">
+            {neededCount(deck) === 0
+              ? "Every card in this deck is one you own (basic lands aside)."
+              : `${neededCount(deck)} card${neededCount(deck) === 1 ? " isn't" : "s aren't"} in your collection${!deck.commanderOwned ? ", the commander included" : ""}. ${deck.missingCount ? "Your collection didn't have enough cards in these colors to fill the deck, so the best picks you'd need are marked NEED." : ""}`}
+          </p>
+          {Object.keys(deck.shortRoles || {}).length > 0 && (
+            <p className="text-xs text-white/60 leading-relaxed mt-2">
+              Your collection is light on{" "}
+              {Object.entries(deck.shortRoles)
+                .map(([cat, r]) => `${CAT_LABELS[cat].toLowerCase()} (${r.have} of ${r.want})`)
+                .join(", ")}
+              {deck.missingCount ? "." : ", so other cards you own fill those slots."}
+            </p>
+          )}
+        </div>
+      )}
+
       {cardDataStatus === "done" && deck.shortfall > 0 && (
         <div className="cf-panel rounded-xl p-4 mb-4 border-amber-400/30">
           <p className="text-xs text-white/60 leading-relaxed">
@@ -118,6 +153,7 @@ export default function ResultView({
                   <CardRow
                     key={c.name}
                     name={c.name}
+                    missing={c.missing}
                     qty={1}
                     cardData={cardData}
                     priceSource={priceSource}
@@ -153,6 +189,23 @@ export default function ResultView({
         </div>
       </div>
 
+      {deck.fromCollection && Object.keys(deck.suggestions || {}).length > 0 && (
+        <div className="cf-panel-alt rounded-xl p-4 mb-6">
+          <p className="cf-mono text-[11px] cf-gold font-semibold mb-1 tracking-wide">WORTH PICKING UP</p>
+          <p className="text-xs text-white/50 mb-3">Popular cards for this commander in the roles your collection is short on.</p>
+          {Object.entries(deck.suggestions).map(([cat, names]) => (
+            <div key={cat} className="mb-2 last:mb-0">
+              <p className="text-[11px] text-white/40 uppercase tracking-wide font-semibold mb-1">{CAT_LABELS[cat]}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
+                {names.map((name) => (
+                  <CardRow key={name} name={name} qty={1} cardData={cardData} priceSource={priceSource} onPreview={setPreviewCard} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Kept well clear of the buttons below so nobody taps an ad by mistake,
           which AdSense treats as invalid clicks. */}
       <AdSlot className="mb-8" />
@@ -179,8 +232,13 @@ export default function ResultView({
       </div>
 
       <button
-        onClick={() => copyForCardmarket(deck.commander.name, deck.picks, deck.nonbasics)}
-        className="w-full py-3 rounded-xl border-2 border-white/15 bg-white/5 hover:bg-white/10 transition text-white/75 font-semibold text-sm flex items-center justify-center gap-2"
+        onClick={() =>
+          deck.fromCollection
+            ? copyNeededForCardmarket(deck)
+            : copyForCardmarket(deck.commander.name, deck.picks, deck.nonbasics)
+        }
+        disabled={deck.fromCollection && neededCount(deck) + suggestionCount(deck) === 0}
+        className="w-full py-3 rounded-xl border-2 border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition text-white/75 font-semibold text-sm flex items-center justify-center gap-2"
       >
         {cardmarketCopied ? (
           <>
@@ -190,7 +248,7 @@ export default function ResultView({
           <>Couldn't copy — your browser may be blocking clipboard access</>
         ) : (
           <>
-            <ClipboardCopy size={15} /> Copy for Cardmarket Wants List
+            <ClipboardCopy size={15} /> {deck.fromCollection ? "Copy Cards You Need for Cardmarket" : "Copy for Cardmarket Wants List"}
           </>
         )}
       </button>

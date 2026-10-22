@@ -1,0 +1,157 @@
+import { BASIC_LAND } from "./colors";
+import { categoryQuery, nonbasicTarget, fixesFor } from "./queries";
+import { scryfallSearchCards, mapScryfallCard, fetchScryfallData } from "./scryfall";
+import { popularityWeightedShuffle } from "./budget";
+import { NONLAND_TARGET, LAND_TARGET } from "./buildDeck";
+import {
+  CATEGORY_TESTS, synergyTest, fullText, isLand, isBasicLand, legalInCommander, fitsIdentity, byPopularity,
+} from "./collection";
+
+// The order roles are filled in. The ones a deck can't run without go
+// first, so a card that is both removal and a win condition counts as
+// removal when the collection is short on removal.
+const FILL_ORDER = ["ramp", "removal", "draw", "protection", "wincon", "utility", "synergy"];
+// How many cards to suggest buying for each role the collection is short on.
+const SUGGESTIONS_PER_ROLE = 5;
+
+/* Builds the 99 from cards the person owns. Same recipe and brackets as
+   buildDeck, but the pool is the collection instead of Scryfall's search
+   results, and nothing is budgeted: owned cards cost nothing. When the
+   collection can't fill a role, the slot goes to the best other owned
+   card, and the result lists cards worth buying for that role. Only a
+   collection with fewer than 62 playable spells gets cards the person
+   doesn't own, each marked `missing`. */
+export async function buildDeckFromCollection(commander, style, bracket, ownedCards, opts = {}) {
+  const { priceSource = "none", theme = null, themeQuery = null } = opts;
+  const identity = commander.identity;
+  const recipe = bracket.recipe;
+  const commanderKey = commander.name.toLowerCase();
+  const usedNames = new Set([commanderKey]);
+  const picks = { ramp: [], draw: [], removal: [], protection: [], synergy: [], wincon: [], utility: [] };
+  const cardData = {};
+
+  // These only tap for the commander's colours, so they make nothing in a
+  // colourless deck.
+  const deadInColorless = new Set(["arcane signet", "command tower"]);
+  const playable = Object.values(ownedCards).filter((c) =>
+    c.name.toLowerCase() !== commanderKey &&
+    legalInCommander(c) &&
+    fitsIdentity(c, identity) &&
+    !isBasicLand(c) &&
+    (identity.length > 0 || !deadInColorless.has(c.name.toLowerCase()))
+  );
+  playable.forEach((c) => { cardData[c.name.toLowerCase()] = mapScryfallCard(c); });
+
+  // "Random" builds keep some variety from deck to deck, still weighted
+  // toward the most played cards; "inspired" builds take them in order.
+  const order = (list) => {
+    const sorted = [...list].sort(byPopularity);
+    return style === "edhrec" ? sorted : popularityWeightedShuffle(sorted);
+  };
+  const spells = order(playable.filter((c) => !isLand(c)));
+  const lands = playable.filter(isLand).sort(byPopularity);
+
+  const tests = { ...CATEGORY_TESTS, synergy: synergyTest(commander, style, theme) || (() => true) };
+  const take = (cat, card) => {
+    usedNames.add(card.name.toLowerCase());
+    picks[cat].push({ name: card.name });
+  };
+
+  FILL_ORDER.forEach((cat) => {
+    for (const card of spells) {
+      if (picks[cat].length >= recipe[cat]) break;
+      if (usedNames.has(card.name.toLowerCase())) continue;
+      if (tests[cat](card, fullText(card))) take(cat, card);
+    }
+  });
+
+  // Roles the collection couldn't fill, before any spare cards cover them.
+  const shortRoles = {};
+  Object.keys(recipe).forEach((cat) => {
+    if (picks[cat].length < recipe[cat]) shortRoles[cat] = { have: picks[cat].length, want: recipe[cat] };
+  });
+
+  // The rest of the spell slots go to the best owned cards left, filed
+  // under Utility since they weren't picked for a particular job.
+  const nonlandCount = () => Object.values(picks).reduce((s, l) => s + l.length, 0);
+  for (const card of spells) {
+    if (nonlandCount() >= NONLAND_TARGET) break;
+    if (!usedNames.has(card.name.toLowerCase())) take("utility", card);
+  }
+
+  // Lands: fixing first in a multicolour deck, then the most played of the
+  // rest, leaving room for a couple of basics of each colour.
+  const multicolor = identity.length > 1;
+  const landOrder = multicolor
+    ? [...lands.filter((l) => fixesFor(l, identity)), ...lands.filter((l) => !fixesFor(l, identity))]
+    : lands;
+  const nonbasicCap = Math.max(0, Math.min(nonbasicTarget(identity, bracket), LAND_TARGET - 2 * identity.length));
+  const nonbasics = landOrder.slice(0, nonbasicCap).map((l) => {
+    usedNames.add(l.name.toLowerCase());
+    return { name: l.name, qty: 1 };
+  });
+
+  // Searches for the short roles, used both for suggestions and, if the
+  // collection simply hasn't enough spells, to fill the deck.
+  const shortCats = Object.keys(shortRoles);
+  const searched = {};
+  if (shortCats.length) {
+    const results = await Promise.all(
+      shortCats.map((cat) =>
+        scryfallSearchCards(categoryQuery(cat, identity, commander, style, themeQuery), priceSource).catch(() => [])
+      )
+    );
+    shortCats.forEach((cat, i) => {
+      searched[cat] = results[i]
+        .filter((c) => !ownedCards[c.name.toLowerCase()] && c.name.toLowerCase() !== commanderKey)
+        .map(mapScryfallCard);
+      searched[cat].forEach((c) => { cardData[c.name.toLowerCase()] = c; });
+    });
+  }
+
+  // Only when the collection hasn't 62 playable spells: top up the short
+  // roles with cards the person would need to get.
+  let missingCount = 0;
+  shortCats.forEach((cat) => {
+    for (const card of searched[cat]) {
+      if (nonlandCount() >= NONLAND_TARGET || picks[cat].length >= recipe[cat]) break;
+      if (usedNames.has(card.name.toLowerCase())) continue;
+      usedNames.add(card.name.toLowerCase());
+      picks[cat].push({ name: card.name, missing: true });
+      missingCount++;
+    }
+  });
+
+  const suggestions = {};
+  shortCats.forEach((cat) => {
+    const list = searched[cat].filter((c) => !usedNames.has(c.name.toLowerCase())).slice(0, SUGGESTIONS_PER_ROLE);
+    if (list.length) suggestions[cat] = list.map((c) => c.name);
+  });
+
+  // Anything still short becomes basic lands, as in the normal builder.
+  const deficit = NONLAND_TARGET - nonlandCount();
+  const basicsNeeded = LAND_TARGET + deficit - nonbasics.length;
+  const basics = [];
+  const basicColors = identity.length ? identity : ["C"];
+  basicColors.forEach((c, i) => {
+    const share = Math.floor(basicsNeeded / basicColors.length) + (i < basicsNeeded % basicColors.length ? 1 : 0);
+    if (share > 0) basics.push({ name: BASIC_LAND[c], qty: share });
+  });
+
+  try {
+    Object.assign(cardData, await fetchScryfallData([...new Set(basics.map((b) => b.name))]));
+  } catch {
+    // basics are near-free either way; missing images here are harmless
+  }
+
+  return {
+    picks,
+    nonbasics,
+    basics,
+    cardData,
+    shortfall: Math.max(0, deficit),
+    shortRoles,
+    suggestions,
+    missingCount,
+  };
+}

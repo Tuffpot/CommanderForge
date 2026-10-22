@@ -58,7 +58,7 @@ export default function MyDecksView({
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-white break-words">{d.deckName}</p>
                 <p className="text-xs text-white/50 mt-0.5">
-                  {d.commander} · {d.source === "edhrec_inspired" ? "EDHREC-inspired" : "Random"} · {d.bracketName}
+                  {d.commander} · {d.source === "collection" ? "From collection" : d.source === "edhrec_inspired" ? "EDHREC-inspired" : "Random"} · {d.bracketName}
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
@@ -93,6 +93,7 @@ export default function MyDecksView({
                           <CardRow
                             key={c.name}
                             name={c.name}
+                            missing={c.missing}
                             qty={1}
                             cardData={d.cardData || {}}
                             priceSource={d.priceSource || "none"}

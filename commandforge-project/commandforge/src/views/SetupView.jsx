@@ -1,4 +1,4 @@
-import { Lightbulb, Loader2, Search, Shuffle, Sparkles } from "lucide-react";
+import { Library, Lightbulb, Loader2, Search, Shuffle, Sparkles } from "lucide-react";
 import ColorPips from "../components/ColorPips";
 import NumBadge from "../components/NumBadge";
 import { formatPrice } from "../lib/budget";
@@ -9,6 +9,8 @@ import { THEME_SUGGESTIONS } from "../lib/queries";
 export default function SetupView({
   bracket,
   budgetInput,
+  collectionCount,
+  collectionStatus,
   colorFilter,
   colorMatchCount,
   colorMatchError,
@@ -17,6 +19,9 @@ export default function SetupView({
   houseName,
   inspired,
   isForging,
+  openCollection,
+  ownedCommanderCount,
+  ownedOnly,
   parsedBudget,
   priceSource,
   randomizeCommander,
@@ -31,13 +36,26 @@ export default function SetupView({
   setBudgetInput,
   setHouseName,
   setInspired,
+  setOwnedOnly,
   setPriceSource,
   setSearch,
   setSelectedCommander,
   setTheme,
+  setUseCollection,
   theme,
   toggleColor,
+  useCollection,
 }) {
+  const searchingOwned = useCollection && ownedOnly;
+  const collectionReady = collectionStatus === "ready" && collectionCount > 0;
+  // Switching what the search looks through drops a commander picked from
+  // the other list.
+  function switchSearch(change) {
+    change();
+    setSelectedCommander(null);
+    setSearch("");
+  }
+
   return (
     <div className="cf-fade">
       <div className="text-center mb-10">
@@ -49,6 +67,56 @@ export default function SetupView({
         <p className="text-white/60 text-base max-w-lg mx-auto leading-relaxed">
           Search a commander, pick a power bracket, and get a legal, playable 99-card decklist tuned for that level of play.
         </p>
+      </div>
+
+      <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-5">
+        {collectionCount > 0 ? (
+          <>
+            <button
+              onClick={() => switchSearch(() => setUseCollection((v) => !v))}
+              disabled={!collectionReady}
+              className="w-full flex items-center justify-between gap-4 text-left disabled:opacity-60"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <Library size={18} className="text-white/40 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white">Build from my collection</p>
+                  <p className="text-xs text-white/50 mt-0.5">
+                    {collectionStatus === "ready"
+                      ? `Only cards you own · ${collectionCount.toLocaleString()} cards, ${ownedCommanderCount} commander${ownedCommanderCount === 1 ? "" : "s"}`
+                      : collectionStatus === "error"
+                      ? "Couldn't look your cards up on Scryfall. Reload to try again."
+                      : "Loading your collection…"}
+                  </p>
+                </div>
+              </div>
+              <span className={`w-11 h-6 rounded-full shrink-0 flex items-center px-0.5 transition ${useCollection ? "bg-purple-500 justify-end" : "bg-white/15 justify-start"}`}>
+                <span className="w-5 h-5 rounded-full bg-white block" />
+              </span>
+            </button>
+            {useCollection && (
+              <label className="flex items-center gap-2 mt-3 pl-[30px] text-xs text-white/60 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!ownedOnly}
+                  onChange={(e) => switchSearch(() => setOwnedOnly(!e.target.checked))}
+                  className="accent-purple-500"
+                />
+                Let me pick a commander I don't own
+              </label>
+            )}
+          </>
+        ) : (
+          <button onClick={openCollection} className="w-full flex items-center gap-3 text-left">
+            <Library size={18} className="text-white/40 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white">Build from your own cards</p>
+              <p className="text-xs text-white/50 mt-0.5">
+                Import your collection from ManaBox or paste a list, and decks use only cards you own. <span className="cf-gold underline underline-offset-2">Add your collection</span>
+              </p>
+            </div>
+          </button>
+        )}
       </div>
 
       <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-5">
@@ -65,11 +133,15 @@ export default function SetupView({
               e.preventDefault();
               resolveAndForgeFromSearch();
             }}
-            placeholder="Search any commander ever printed…"
+            placeholder={searchingOwned ? "Search commanders you own…" : "Search any commander ever printed…"}
             className="w-full bg-black/40 border border-white/15 rounded-xl pl-10 pr-3 py-3.5 text-base sm:text-sm text-white placeholder-white/35 outline-none focus:border-[#E3B25C]/60"
           />
         </div>
-        <p className="text-[11px] text-white/30 mb-2">Live search via Scryfall — every legal commander, not a fixed list.</p>
+        <p className="text-[11px] text-white/30 mb-2">
+          {searchingOwned
+            ? "Legendary creatures and other commanders in your collection, most played first."
+            : "Live search via Scryfall — every legal commander, not a fixed list."}
+        </p>
 
         {selectedCommander && (
           <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-purple-400/50 bg-purple-500/10 mb-1">
@@ -92,7 +164,13 @@ export default function SetupView({
         )}
 
         {!selectedCommander && !searchLoading && !searchError && search.trim() && searchResults.length === 0 && (
-          <p className="text-xs text-white/40 py-3 text-center">No commander found for "{search.trim()}".</p>
+          <p className="text-xs text-white/40 py-3 text-center">
+            {searchingOwned ? `You don't own a commander matching "${search.trim()}".` : `No commander found for "${search.trim()}".`}
+          </p>
+        )}
+
+        {searchingOwned && !selectedCommander && !search.trim() && searchResults.length === 0 && (
+          <p className="text-xs text-white/40 py-3 text-center">There are no commanders in your collection yet. Tick the box above to pick any commander.</p>
         )}
 
         {!selectedCommander && !searchLoading && !searchError && searchResults.length > 0 && (
@@ -183,7 +261,13 @@ export default function SetupView({
           </p>
         )}
 
-        {priceSource !== "none" && (
+        {priceSource !== "none" && useCollection && (
+          <p className="text-xs text-white/40 mt-3 leading-relaxed">
+            No budget needed when building from your collection: you already own the cards. Prices show what they're worth.
+          </p>
+        )}
+
+        {priceSource !== "none" && !useCollection && (
           <div className="mt-4 pt-4 border-t border-white/10">
             <p className="text-xs text-white/50 mb-2 font-semibold">Budget (optional)</p>
             <div className="relative">
@@ -251,15 +335,15 @@ export default function SetupView({
         </div>
         <p className="text-center text-xs text-white/40 mb-4">
           {colorFilter.length === 0 && !houseName.trim()
-            ? "Any color identity"
+            ? searchingOwned ? `Any of your ${colorMatchCount ?? 0} commanders` : "Any color identity"
             : colorMatchLoading
             ? "Checking Scryfall…"
             : colorMatchError
             ? "Couldn't reach Scryfall"
             : colorMatchCount === 0
-            ? "No legal commander fits this combo"
-            : houseName.trim()
-            ? `${colorMatchCount ?? "…"} commander${colorMatchCount === 1 ? "" : "s"} match`
+            ? searchingOwned ? "You don't own a commander in these colors" : "No legal commander fits this combo"
+            : houseName.trim() || searchingOwned
+            ? `${colorMatchCount ?? "…"} ${searchingOwned ? "owned " : ""}commander${colorMatchCount === 1 ? "" : "s"} match`
             : houseNameForColors(colorFilter)}
         </p>
 
@@ -291,7 +375,12 @@ export default function SetupView({
           <p className="text-[11px] text-white/40 uppercase tracking-wide font-semibold mb-1">This will also use</p>
           <p className="text-xs text-white/70 leading-relaxed">
             Bracket: <span className="text-white font-semibold">{bracket ? `${bracket.id} · ${bracket.name}` : "none selected yet"}</span>
-            {priceSource !== "none" && (
+            {useCollection && (
+              <>
+                {" · "}<span className="text-white font-semibold">{ownedOnly ? "A commander you own" : "Any commander"}, cards from your collection</span>
+              </>
+            )}
+            {priceSource !== "none" && !useCollection && (
               <>
                 {" · "}Budget: <span className="text-white font-semibold">{parsedBudget ? formatPrice(parsedBudget, priceSource) : "no limit"}</span>
               </>
@@ -316,7 +405,7 @@ export default function SetupView({
           className="w-full py-3.5 rounded-xl border-2 border-purple-400/60 bg-purple-500/15 hover:bg-purple-500/25 disabled:border-white/15 disabled:bg-white/5 disabled:text-white/25 disabled:cursor-not-allowed text-white font-semibold text-sm flex items-center justify-center gap-2 transition"
         >
           {isForging ? <Loader2 size={16} className="animate-spin" /> : <Shuffle size={16} />}
-          {isForging ? "Forging…" : "Randomize Commander"}
+          {isForging ? "Forging…" : searchingOwned ? "Random Commander I Own" : "Randomize Commander"}
         </button>
       </div>
 

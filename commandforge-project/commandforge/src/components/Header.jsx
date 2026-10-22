@@ -2,6 +2,7 @@ import { Loader2, LogOut, Swords, User } from "lucide-react";
 
 export default function Header({
   authLoading,
+  collectionCount,
   handleSignOut,
   openAuthModal,
   reset,
@@ -24,10 +25,19 @@ export default function Header({
             <button
               onClick={() => setView("setup")}
               className={`px-3 sm:px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
-                view !== "decks" ? "bg-[#E3B25C] text-black" : "text-white/70 hover:text-white"
+                view === "setup" || view === "result" ? "bg-[#E3B25C] text-black" : "text-white/70 hover:text-white"
               }`}
             >
               Forge
+            </button>
+            <button
+              onClick={() => setView("collection")}
+              title={collectionCount ? `${collectionCount} different cards` : "Import your card collection"}
+              className={`px-3 sm:px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+                view === "collection" ? "bg-[#E3B25C] text-black" : "text-white/70 hover:text-white"
+              }`}
+            >
+              Collection
             </button>
             <button
               onClick={() => setView("decks")}
@@ -35,7 +45,9 @@ export default function Header({
                 view === "decks" ? "bg-[#E3B25C] text-black" : "text-white/70 hover:text-white"
               }`}
             >
-              My Decks{savedDecks.length > 0 ? ` (${savedDecks.length})` : ""}
+              <span className="sm:hidden">Decks</span>
+              <span className="hidden sm:inline">My Decks</span>
+              {savedDecks.length > 0 ? ` (${savedDecks.length})` : ""}
             </button>
           </nav>
           <div className="w-px h-6 bg-white/15 mx-1 hidden sm:block" />

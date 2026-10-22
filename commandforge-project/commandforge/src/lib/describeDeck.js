@@ -29,7 +29,9 @@ export function strategyBlurb(deck) {
 // roughly how it plays, shown at the top of the result screen.
 export function describeDeck(deck) {
   if (!deck) return "";
-  const styleText = deck.style === "edhrec" ? "An EDHREC-inspired build" : "A randomly assembled build";
+  const styleText = deck.fromCollection
+    ? `${deck.style === "edhrec" ? "An EDHREC-inspired" : "A"} build from your own collection`
+    : deck.style === "edhrec" ? "An EDHREC-inspired build" : "A randomly assembled build";
   const themeText = deck.theme ? ` leaning into a ${deck.theme} theme` : "";
   const colorsText = deck.commander.identity.length
     ? ` in ${houseNameForColors(deck.commander.identity)} colors`

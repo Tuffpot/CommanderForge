@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ImageOff } from "lucide-react";
 import { formatPrice } from "../lib/budget";
 
-export default function CardRow({ name, qty, cardData, priceSource, onPreview }) {
+export default function CardRow({ name, qty, cardData, priceSource, onPreview, missing = false }) {
   const [hover, setHover] = useState(false);
   const [rect, setRect] = useState(null);
   const rowRef = useRef(null);
@@ -74,6 +74,11 @@ export default function CardRow({ name, qty, cardData, priceSource, onPreview })
       <span className="text-sm text-white/85 leading-snug flex-1 min-w-0 truncate">
         {qty > 1 ? `${qty}× ` : ""}{name}
       </span>
+      {missing && (
+        <span title="Not in your collection" className="cf-mono text-[9px] font-semibold tracking-wide text-amber-300 border border-amber-300/40 rounded px-1 shrink-0">
+          NEED
+        </span>
+      )}
       {showThumb && (
         <span className="cf-mono text-[11px] text-white/50 shrink-0">
           {formatPrice(price, priceSource)}

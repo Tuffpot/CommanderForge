@@ -1,8 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabaseClient";
 import { buildNameQuery, filterAndSortByName, buildColorQuery, resolveThemeQuery } from "./lib/queries";
-import { scryfallSearchCommanders, scryfallRandomCommander } from "./lib/scryfall";
-import { buildDeck } from "./lib/buildDeck";
+import { scryfallSearchCommanders, scryfallRandomCommander, mapScryfallCardToCommander } from "./lib/scryfall";
+import { buildDeck, NONLAND_TARGET } from "./lib/buildDeck";
+import { buildDeckFromCollection } from "./lib/buildFromCollection";
+import { parseCollectionText, fetchCollectionCards, mergeEntries, ownedCommanders, playableCount } from "./lib/collection";
+import { HOUSE_NAMES } from "./lib/colors";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import { loadAdSense } from "./lib/ads";
@@ -12,6 +15,40 @@ import CardPreviewModal from "./components/CardPreviewModal";
 import SetupView from "./views/SetupView";
 import ResultView from "./views/ResultView";
 import MyDecksView from "./views/MyDecksView";
+import CollectionView from "./views/CollectionView";
+
+// Where a signed-out visitor's collection is kept.
+const LOCAL_COLLECTION_KEY = "cf-collection";
+
+function readLocalCollection() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LOCAL_COLLECTION_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalCollection(entries) {
+  try {
+    if (entries.length) localStorage.setItem(LOCAL_COLLECTION_KEY, JSON.stringify(entries));
+    else localStorage.removeItem(LOCAL_COLLECTION_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The colours picked in the randomizer, as a colour identity ("C" is colourless).
+function pickedIdentity(colorFilter, houseName) {
+  const colors = HOUSE_NAMES[houseName.trim().toLowerCase()] || colorFilter;
+  if (!colors.length) return null;
+  return colors.includes("C") ? [] : colors;
+}
+
+function sameIdentity(a, b) {
+  return a.length === b.length && a.every((c) => b.includes(c));
+}
 
 
 /* ---------------------------------------------------------
@@ -66,6 +103,19 @@ export default function CommandForge() {
   const [accountDeleting, setAccountDeleting] = useState(false);
   const [accountDeleteError, setAccountDeleteError] = useState("");
 
+  // The person's card collection: name + quantity entries (what's stored),
+  // and the full Scryfall data for each card (looked up when it loads).
+  const [collection, setCollection] = useState([]);
+  const [ownedCards, setOwnedCards] = useState({});
+  const [collectionStatus, setCollectionStatus] = useState("idle"); // idle | loading | resolving | ready | error
+  const [collectionError, setCollectionError] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(null);
+  const [importError, setImportError] = useState("");
+  const [notFound, setNotFound] = useState([]);
+  const [useCollection, setUseCollection] = useState(false);
+  const [ownedOnly, setOwnedOnly] = useState(true);
+
   // Track the Supabase auth session for the lifetime of the app.
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -88,6 +138,128 @@ export default function CommandForge() {
     refreshSavedDecks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  // Load the collection: from the account when signed in, otherwise from
+  // this browser. A collection made before signing in moves to the account
+  // if the account doesn't have one yet.
+  useEffect(() => {
+    if (authLoading) return;
+    let stale = false;
+    (async () => {
+      setCollectionStatus("loading");
+      setCollectionError("");
+      let entries = readLocalCollection();
+      if (session) {
+        const { data, error } = await supabase.from("collections").select("cards").maybeSingle();
+        if (stale) return;
+        if (error) {
+          setCollectionError("Couldn't load the collection saved to your account. Please try again later.");
+          entries = [];
+        } else if (data?.cards?.length) {
+          entries = data.cards;
+        } else if (entries.length) {
+          const { error: saveError } = await supabase
+            .from("collections")
+            .upsert({ user_id: session.user.id, cards: entries, updated_at: new Date().toISOString() });
+          if (!saveError) writeLocalCollection([]);
+        }
+      }
+      if (stale) return;
+      setCollection(entries);
+      await resolveCollection(entries, () => stale);
+    })();
+    return () => {
+      stale = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, authLoading]);
+
+  async function resolveCollection(entries, isStale = () => false) {
+    if (!entries.length) {
+      setOwnedCards({});
+      setCollectionStatus("ready");
+      return;
+    }
+    setCollectionStatus("resolving");
+    try {
+      const { cards } = await fetchCollectionCards(entries);
+      if (isStale()) return;
+      setOwnedCards(cards);
+      setCollectionStatus("ready");
+    } catch {
+      if (!isStale()) setCollectionStatus("error");
+    }
+  }
+
+  async function saveCollection(entries) {
+    if (!session) return writeLocalCollection(entries) ? null : "This browser wouldn't let us save your collection.";
+    const { error } = await supabase
+      .from("collections")
+      .upsert({ user_id: session.user.id, cards: entries, updated_at: new Date().toISOString() });
+    return error ? "Couldn't save your collection to your account. Please try again." : null;
+  }
+
+  // Reads a ManaBox CSV (or a pasted list), checks every card against
+  // Scryfall, then adds it to or replaces the collection.
+  async function importCollection(text, mode) {
+    setImportError("");
+    setNotFound([]);
+    const parsed = parseCollectionText(text);
+    if (!parsed.length) {
+      setImportError("Couldn't find any cards in that. Use a CSV export, or one card per line like \"1 Sol Ring\".");
+      return false;
+    }
+    // One lookup per printing or name, however many rows it's on.
+    const unique = new Map();
+    parsed.forEach((e) => {
+      const key = (e.scryfallId || e.name).toLowerCase();
+      unique.set(key, { ...e, qty: (unique.get(key)?.qty || 0) + e.qty });
+    });
+    setImporting(true);
+    setImportProgress(null);
+    try {
+      const result = await fetchCollectionCards([...unique.values()], (done, total) => setImportProgress({ done, total }));
+      const entries = mode === "replace" ? result.entries : mergeEntries(collection, result.entries);
+      const saveError = await saveCollection(entries);
+      if (saveError) {
+        setImportError(saveError);
+        return false;
+      }
+      setCollection(entries);
+      setOwnedCards((prev) => (mode === "replace" ? result.cards : { ...prev, ...result.cards }));
+      setCollectionStatus("ready");
+      setNotFound(result.notFound);
+      return true;
+    } catch {
+      setImportError("Couldn't reach Scryfall to check the cards. Check your connection and try again.");
+      return false;
+    } finally {
+      setImporting(false);
+      setImportProgress(null);
+    }
+  }
+
+  async function clearCollection() {
+    const saveError = await saveCollection([]);
+    if (saveError) {
+      setCollectionError(saveError);
+      return;
+    }
+    setCollection([]);
+    setOwnedCards({});
+    setNotFound([]);
+    setUseCollection(false);
+  }
+
+  const ownedCommanderList = useMemo(() => ownedCommanders(ownedCards).map(mapScryfallCardToCommander), [ownedCards]);
+  const searchingOwned = useCollection && ownedOnly;
+
+  function startCollectionBuild() {
+    setUseCollection(true);
+    setSelectedCommander(null);
+    setSearch("");
+    setView("setup");
+  }
 
   async function refreshSavedDecks() {
     setDecksLoading(true);
@@ -178,6 +350,16 @@ export default function CommandForge() {
   useEffect(() => {
     if (selectedCommander) return;
     setSearchError(false);
+    // Building from the collection: search the commanders they own, no
+    // Scryfall call needed.
+    if (searchingOwned) {
+      setSearchLoading(false);
+      const filtered = search.trim() ? filterAndSortByName(ownedCommanderList, search) : ownedCommanderList;
+      setSearchResults(filtered.slice(0, 60));
+      const exact = filtered.find((c) => c.name.toLowerCase() === search.trim().toLowerCase());
+      if (exact) setSelectedCommander(exact);
+      return;
+    }
     // A slow response for an earlier keystroke mustn't overwrite the results
     // for what's typed now.
     let stale = false;
@@ -202,11 +384,17 @@ export default function CommandForge() {
       clearTimeout(handle);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, selectedCommander]);
+  }, [search, selectedCommander, searchingOwned, ownedCommanderList]);
 
   // Live match count for the color-randomizer path.
   useEffect(() => {
     setColorMatchError(false);
+    if (searchingOwned) {
+      const wanted = pickedIdentity(colorFilter, houseName);
+      setColorMatchLoading(false);
+      setColorMatchCount(wanted ? ownedCommanderList.filter((c) => sameIdentity(c.identity, wanted)).length : ownedCommanderList.length);
+      return;
+    }
     const handle = setTimeout(async () => {
       setColorMatchLoading(true);
       try {
@@ -221,7 +409,7 @@ export default function CommandForge() {
     }, 350);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colorFilter, houseName, theme]);
+  }, [colorFilter, houseName, theme, searchingOwned, ownedCommanderList]);
 
   // Colourless can't combine with a colour, so picking one clears the other.
   function toggleColor(c) {
@@ -235,6 +423,14 @@ export default function CommandForge() {
   async function resolveAndForgeFromSearch() {
     const query = search.trim();
     if (!query || isForging) return;
+    if (searchingOwned) {
+      const resolved = selectedCommander || searchResults[0];
+      if (!resolved) return;
+      setSelectedCommander(resolved);
+      setSearch(resolved.name);
+      if (bracket) await forgeWith(resolved, bracket);
+      return;
+    }
     setSearchLoading(true);
     try {
       const { cards } = await scryfallSearchCommanders(buildNameQuery(query));
@@ -289,11 +485,10 @@ export default function CommandForge() {
       // that the supporting 99 should lean into a specific archetype, so it
       // forces archetype-aware building even if that toggle is off.
       const buildStyle = inspired || usedTheme ? "edhrec" : "random";
-      const built = await buildDeck(commander, buildStyle, activeBracket, {
-        budget: parsedBudget,
-        priceSource,
-        themeQuery: usedTheme ? resolveThemeQuery(usedTheme) : null,
-      });
+      const themeQuery = usedTheme ? resolveThemeQuery(usedTheme) : null;
+      const built = useCollection
+        ? await buildDeckFromCollection(commander, buildStyle, activeBracket, ownedCards, { priceSource, theme: usedTheme, themeQuery })
+        : await buildDeck(commander, buildStyle, activeBracket, { budget: parsedBudget, priceSource, themeQuery });
       setDeck({
         commander,
         // The style actually used, so a theme-driven build isn't described
@@ -302,7 +497,13 @@ export default function CommandForge() {
         theme: usedTheme,
         shortfall: built.shortfall,
         bracket: activeBracket,
-        budgetTarget: parsedBudget,
+        // Owned cards cost nothing, so a collection build has no budget.
+        budgetTarget: useCollection ? null : parsedBudget,
+        fromCollection: useCollection,
+        commanderOwned: Boolean(ownedCards[commander.name.toLowerCase()]),
+        shortRoles: built.shortRoles || {},
+        suggestions: built.suggestions || {},
+        missingCount: built.missingCount || 0,
         picks: built.picks,
         nonbasics: built.nonbasics,
         basics: built.basics,
@@ -342,7 +543,9 @@ export default function CommandForge() {
     setRandomizeError(false);
     setIsForging(true);
     try {
-      const commander = await scryfallRandomCommander(buildColorQuery(colorFilter, houseName, theme));
+      const commander = searchingOwned
+        ? randomOwnedCommander()
+        : await scryfallRandomCommander(buildColorQuery(colorFilter, houseName, theme));
       if (!commander) {
         setRandomizeError(true);
         setIsForging(false);
@@ -354,6 +557,16 @@ export default function CommandForge() {
       setRandomizeError(true);
       setIsForging(false);
     }
+  }
+
+  // A random owned commander in the picked colours, preferring ones the
+  // collection has enough cards to fill a deck for.
+  function randomOwnedCommander() {
+    const wanted = pickedIdentity(colorFilter, houseName);
+    const inColors = ownedCommanderList.filter((c) => !wanted || sameIdentity(c.identity, wanted));
+    const buildable = inColors.filter((c) => playableCount(c, ownedCards) >= NONLAND_TARGET);
+    const pool = buildable.length ? buildable : inColors;
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
   }
 
   // cardData holds every candidate Scryfall returned (well over a thousand
@@ -381,7 +594,7 @@ export default function CommandForge() {
       deck_name: deckName.trim() || `${deck.commander.name} Deck`,
       commander: deck.commander.name,
       identity: deck.commander.identity,
-      source: deck.style === "edhrec" ? "edhrec_inspired" : "random",
+      source: deck.fromCollection ? "collection" : deck.style === "edhrec" ? "edhrec_inspired" : "random",
       bracket_name: deck.bracket.name,
       picks: deck.picks,
       nonbasics: deck.nonbasics,
@@ -408,8 +621,25 @@ export default function CommandForge() {
     return lines.join("\n");
   }
 
+  // For a collection build: only the cards the person doesn't own yet,
+  // plus the suggested ones for roles the collection is short on.
+  function neededList(d) {
+    const lines = [];
+    if (!d.commanderOwned) lines.push(`1 ${d.commander.name}`);
+    Object.values(d.picks).flat().filter((c) => c.missing).forEach((c) => lines.push(`1 ${c.name}`));
+    Object.values(d.suggestions || {}).flat().forEach((name) => lines.push(`1 ${name}`));
+    return lines.join("\n");
+  }
+
   async function copyForCardmarket(commanderName, picks, nonbasics) {
-    const text = cardmarketList(commanderName, picks, nonbasics);
+    await copyText(cardmarketList(commanderName, picks, nonbasics));
+  }
+
+  async function copyNeededForCardmarket(d) {
+    await copyText(neededList(d));
+  }
+
+  async function copyText(text) {
     try {
       await navigator.clipboard.writeText(text);
       setCardmarketCopied(true);
@@ -466,6 +696,7 @@ export default function CommandForge() {
           handleSignOut={handleSignOut}
           openAuthModal={openAuthModal}
           reset={reset}
+          collectionCount={collection.length}
           savedDecks={savedDecks}
           session={session}
           setView={setView}
@@ -477,6 +708,14 @@ export default function CommandForge() {
             <SetupView
               bracket={bracket}
               budgetInput={budgetInput}
+              collectionCount={collection.reduce((s, e) => s + e.qty, 0)}
+              collectionStatus={collectionStatus}
+              ownedCommanderCount={ownedCommanderList.length}
+              ownedOnly={ownedOnly}
+              setOwnedOnly={setOwnedOnly}
+              setUseCollection={setUseCollection}
+              openCollection={() => setView("collection")}
+              useCollection={useCollection}
               colorFilter={colorFilter}
               colorMatchCount={colorMatchCount}
               colorMatchError={colorMatchError}
@@ -515,6 +754,7 @@ export default function CommandForge() {
               cardmarketCopied={cardmarketCopied}
               cardmarketCopyError={cardmarketCopyError}
               copyForCardmarket={copyForCardmarket}
+              copyNeededForCardmarket={copyNeededForCardmarket}
               deck={deck}
               deckTotalPrice={deckTotalPrice}
               openAuthModal={openAuthModal}
@@ -523,6 +763,24 @@ export default function CommandForge() {
               session={session}
               setPreviewCard={setPreviewCard}
               setSaveModalOpen={setSaveModalOpen}
+            />
+          )}
+
+          {view === "collection" && (
+            <CollectionView
+              clearCollection={clearCollection}
+              collection={collection}
+              collectionError={collectionError}
+              collectionStatus={collectionStatus}
+              commanderCount={ownedCommanderList.length}
+              importCollection={importCollection}
+              importError={importError}
+              importProgress={importProgress}
+              importing={importing}
+              notFound={notFound}
+              openAuthModal={openAuthModal}
+              session={session}
+              startCollectionBuild={startCollectionBuild}
             />
           )}
 

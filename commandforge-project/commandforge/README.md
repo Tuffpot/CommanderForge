@@ -116,6 +116,30 @@ That's it — **Sign In** in the top-right should now let you create an account 
 
 **Note on the anon key:** it's fine that this key is visible in your app's code (even after hosting it publicly) — it's designed to be public. Real protection comes from the Row Level Security policies from step 2, not from hiding this key.
 
+### 6. (Optional) Sign in with Google or Apple
+The sign-in pop-up shows **Continue with Google** and **Continue with Apple** buttons, but each one only appears once you switch it on in Supabase. Nothing changes until then.
+
+First, tell Supabase where people may be sent back to after signing in. Go to **Authentication → URL Configuration**:
+- **Site URL:** `https://commanderforge.co.uk`
+- **Redirect URLs:** add `https://commanderforge.co.uk`, `http://localhost:5173` (for testing on your own computer) and `uk.co.commanderforge.app://auth-callback` (for the Android and iPhone apps).
+
+**Google** (free):
+1. In Supabase, open **Authentication → Sign In / Providers → Google** and copy the **Callback URL** it shows (it looks like `https://your-project-ref.supabase.co/auth/v1/callback`).
+2. Go to https://console.cloud.google.com, create a project (any name), then open **Google Auth Platform** (or **APIs & Services → OAuth consent screen**).
+3. Fill in the app name (Commander Forge), your support email, and under **Authorised domains** add `commanderforge.co.uk` and `your-project-ref.supabase.co`. Choose **External** for the audience and publish the app, so anyone can sign in rather than just test users.
+4. Under **Clients**, click **Create client**, pick **Web application**, add `https://commanderforge.co.uk` under **Authorised JavaScript origins**, and paste the Callback URL from step 1 under **Authorised redirect URIs**. Create it.
+5. Copy the **Client ID** and **Client secret** into the Google page in Supabase, turn Google on, and save.
+
+**Apple** (needs an Apple Developer account, which you already need for the App Store). The App Store requires this button in the iPhone app whenever Google sign-in is offered there, so switch it on before sending an iPhone build with Google sign-in for review.
+1. At https://developer.apple.com/account go to **Certificates, Identifiers & Profiles → Identifiers**. Open the app's ID (`uk.co.commanderforge.app`) and tick **Sign in with Apple**.
+2. Add a new identifier of type **Services IDs** (for example `uk.co.commanderforge.web`). Tick **Sign in with Apple**, click **Configure**, choose the app ID as the primary, add `your-project-ref.supabase.co` under **Domains** and the Supabase Callback URL under **Return URLs**.
+3. Under **Keys**, create a key with **Sign in with Apple** ticked and download the `.p8` file. Note the **Key ID** and your **Team ID** (top right of the page).
+4. In Supabase, open **Authentication → Sign In / Providers → Apple**, turn it on, put the Services ID in **Client IDs**, and paste a secret key made from the `.p8` file (Supabase's Apple sign-in guide has a tool that makes it from the Team ID, Key ID and `.p8`). Save. Apple makes this secret expire every 6 months, so set a reminder to make a new one.
+
+Someone who signs in with Google using the same email as an existing account gets the same account and saved decks.
+
+The Android and iPhone apps open Google or Apple in an in-app browser, then come back to the app signed in. Run `npm run app:sync` after pulling this change so the apps pick up the two new Capacitor plugins it uses.
+
 ## How the code is laid out
 
 - `src/CommandForge.jsx` holds the app's shared state and switches between screens.

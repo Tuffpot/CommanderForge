@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";
+import { supabase, supabaseUrl, supabaseAnonKey } from "./supabaseClient";
 import { buildNameQuery, filterAndSortByName, buildColorQuery, resolveThemeQuery } from "./lib/queries";
 import { scryfallSearchCommanders, scryfallRandomCommander } from "./lib/scryfall";
 import { buildDeck } from "./lib/buildDeck";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import { loadAdSense } from "./lib/ads";
+import { fetchEnabledProviders, startOAuthSignIn, waitForNativeSignIn } from "./lib/oauth";
 import SaveDeckModal from "./components/SaveDeckModal";
 import AuthModal from "./components/AuthModal";
 import CardPreviewModal from "./components/CardPreviewModal";
@@ -61,6 +62,7 @@ export default function CommandForge() {
   const [authError, setAuthError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
   const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [oauthProviders, setOauthProviders] = useState([]);
   const [decksLoading, setDecksLoading] = useState(false);
   const [deckSaveError, setDeckSaveError] = useState("");
   const [accountDeleting, setAccountDeleting] = useState(false);
@@ -75,7 +77,20 @@ export default function CommandForge() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
     });
-    return () => listener.subscription.unsubscribe();
+    const stopNativeSignIn = waitForNativeSignIn(supabase, (message) => {
+      setAuthError(message);
+      setAuthModalOpen(true);
+    });
+    return () => {
+      listener.subscription.unsubscribe();
+      stopNativeSignIn();
+    };
+  }, []);
+
+  // Show "Continue with Google / Apple" only for providers switched on in
+  // Supabase.
+  useEffect(() => {
+    fetchEnabledProviders(supabaseUrl, supabaseAnonKey).then(setOauthProviders);
   }, []);
 
   // Pull this user's saved decks from Supabase whenever they sign in (or
@@ -143,6 +158,22 @@ export default function CommandForge() {
       setAuthSubmitting(false);
     }
   }
+
+  async function handleOAuthSignIn(provider) {
+    setAuthError("");
+    setAuthNotice("");
+    try {
+      await startOAuthSignIn(supabase, provider);
+    } catch (err) {
+      setAuthError(err.message || "Something went wrong.");
+    }
+  }
+
+  // The apps sign in through a separate browser, so close the pop-up once the
+  // session arrives.
+  useEffect(() => {
+    if (session) setAuthModalOpen(false);
+  }, [session]);
 
   function openAuthModal(notice = "") {
     setAuthMode("signin");
@@ -567,6 +598,8 @@ export default function CommandForge() {
           authPassword={authPassword}
           authSubmitting={authSubmitting}
           handleAuthSubmit={handleAuthSubmit}
+          handleOAuthSignIn={handleOAuthSignIn}
+          oauthProviders={oauthProviders}
           setAuthEmail={setAuthEmail}
           setAuthError={setAuthError}
           setAuthModalOpen={setAuthModalOpen}

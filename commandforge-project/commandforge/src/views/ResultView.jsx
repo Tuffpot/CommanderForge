@@ -227,7 +227,7 @@ export default function ResultView({
           onClick={reset}
           className="flex-1 py-3.5 rounded-xl border-2 border-white/25 bg-white/5 hover:bg-white/10 transition text-white/85 font-semibold text-sm flex items-center justify-center gap-2"
         >
-          Forge Another
+          Brew Another
         </button>
       </div>
 

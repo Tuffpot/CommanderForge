@@ -63,7 +63,7 @@ export default function SetupView({
           <Sparkles size={13} />
           POWERED BY LIVE SCRYFALL DATA
         </div>
-        <h1 className="cf-display text-4xl sm:text-5xl text-white mb-4 leading-tight">Commander Forge</h1>
+        <h1 className="cf-display text-4xl sm:text-5xl text-white mb-4 leading-tight">Brewhall</h1>
         <p className="text-white/60 text-base max-w-lg mx-auto leading-relaxed">
           Search a commander, pick a power bracket, and get a legal, playable 99-card decklist tuned for that level of play.
         </p>
@@ -299,7 +299,7 @@ export default function SetupView({
         className="w-full py-3.5 rounded-xl border-2 border-[#E3B25C]/70 bg-[#E3B25C]/15 hover:bg-[#E3B25C]/25 disabled:border-white/15 disabled:bg-white/5 disabled:text-white/25 disabled:cursor-not-allowed transition text-white font-semibold text-sm flex items-center justify-center gap-2 mb-8"
       >
         {isForging ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-        {isForging ? "Forging…" : "Forge Commander Deck"}
+        {isForging ? "Brewing…" : "Brew Commander Deck"}
       </button>
 
       <div className="flex items-center gap-3 mb-6">

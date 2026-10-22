@@ -1,4 +1,4 @@
-import { Loader2, LogOut, Swords, User } from "lucide-react";
+import { Loader2, LogOut, User } from "lucide-react";
 
 export default function Header({
   authLoading,
@@ -14,11 +14,9 @@ export default function Header({
   return (
     <header className="bg-black border-b border-white/10 sticky top-0 z-10">
       <div className="max-w-5xl mx-auto px-4 sm:px-5 py-4 flex items-center justify-between gap-2 sm:gap-4">
-        <button onClick={reset} className="flex items-center gap-3 shrink-0" aria-label="Commander Forge home">
-          <span className="w-10 h-10 rounded-xl bg-[#E3B25C] flex items-center justify-center text-black shrink-0">
-            <Swords size={20} strokeWidth={2.5} />
-          </span>
-          <span className="cf-display text-lg text-white whitespace-nowrap hidden sm:inline">Commander Forge</span>
+        <button onClick={reset} className="flex items-center gap-3 shrink-0" aria-label="Brewhall home">
+          <img src="/logo.svg" alt="" width={40} height={40} className="w-10 h-10 shrink-0" />
+          <span className="cf-display text-lg text-white whitespace-nowrap hidden sm:inline">Brewhall</span>
         </button>
         <div className="flex items-center gap-1 sm:gap-2 min-w-0">
           <nav className="flex items-center gap-1">
@@ -28,7 +26,7 @@ export default function Header({
                 view === "setup" || view === "result" ? "bg-[#E3B25C] text-black" : "text-white/70 hover:text-white"
               }`}
             >
-              Forge
+              Brew
             </button>
             <button
               onClick={() => setView("collection")}

@@ -47,7 +47,7 @@ export default function MyDecksView({
 
       {session && !decksLoading && savedDecks.length === 0 && (
         <div className="cf-panel rounded-2xl p-10 text-center border-dashed">
-          <p className="text-white/50 text-sm">No decks saved yet. Forge one and hit "Save Deck".</p>
+          <p className="text-white/50 text-sm">No decks saved yet. Brew one and hit "Save Deck".</p>
         </div>
       )}
 

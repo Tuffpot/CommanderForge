@@ -26,7 +26,7 @@ export default function Header({
                 view === "setup" || view === "result" ? "bg-[#E3B25C] text-black" : "text-white/70 hover:text-white"
               }`}
             >
-              Forge
+              Brew
             </button>
             <button
               onClick={() => setView("collection")}

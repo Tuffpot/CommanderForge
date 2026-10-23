@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyBracketLimits, bracketLimits, breakCombos, isExtraTurn, twoCardCombosFrom } from "./bracketRules";
+import { applyBracketLimits, bracketLimits, breakCombos, capPicks, isExtraTurn, twoCardCombosFrom } from "./bracketRules";
 
 const card = (name, oracleText = "") => ({ name, oracleText });
 const gc = new Set(["rhystic study", "cyclonic rift", "demonic tutor", "smothering tithe", "gaea's cradle"]);
@@ -46,6 +46,37 @@ describe("applyBracketLimits", () => {
   it("leaves bracket 4 alone", () => {
     const [r] = applyBracketLimits([removal], bracketLimits(4), gc);
     expect(r).toHaveLength(4);
+  });
+});
+
+describe("capPicks", () => {
+  const picks = {
+    lands: [card("Command Tower")],
+    draw: [card("Rhystic Study"), card("Harmonize")],
+    removal: [card("Cyclonic Rift"), card("Demonic Tutor"), card("Smothering Tithe")],
+  };
+  const spares = { draw: [card("Rhystic Study"), card("Divination")], removal: [card("Gaea's Cradle"), card("Swords to Plowshares")] };
+  const replacementsFor = (role) => spares[role] || [];
+
+  it("keeps the first three Game Changers the deck picked in bracket 3 and swaps the rest", () => {
+    const { picks: next, swaps } = capPicks(picks, bracketLimits(3), gc, { replacementsFor });
+    expect(next.removal.map((c) => c.name)).toEqual(["Cyclonic Rift", "Demonic Tutor", "Swords to Plowshares"]);
+    expect(swaps.map((s) => [s.from.name, s.to?.name])).toEqual([["Smothering Tithe", "Swords to Plowshares"]]);
+  });
+
+  it("swaps out every Game Changer in bracket 2, never for another, and drops one with no swap", () => {
+    const { picks: next } = capPicks(picks, bracketLimits(2), gc, { replacementsFor });
+    expect(next.draw.map((c) => c.name)).toEqual(["Divination", "Harmonize"]);
+    expect(next.removal.map((c) => c.name)).toEqual(["Swords to Plowshares"]);
+  });
+
+  it("counts a Game Changer commander toward the three", () => {
+    const { swaps } = capPicks(picks, bracketLimits(3), gc, { gameChangersUsed: 1, replacementsFor });
+    expect(swaps.map((s) => s.from.name)).toEqual(["Demonic Tutor", "Smothering Tithe"]);
+  });
+
+  it("leaves bracket 4 alone", () => {
+    expect(capPicks(picks, bracketLimits(4), gc).swaps).toHaveLength(0);
   });
 });
 

@@ -5,7 +5,7 @@ import {
   priceOf, UNKNOWN_PRICE_ESTIMATE, cheapestFirst, spend, orderCandidates,
   pickWithinBudget, AUTO_INCLUDES, pullStaples, upgradeWithinBudget,
 } from "./budget";
-import { applyBracketLimits, bracketLimits, breakCombos, fetchGameChangers, findTwoCardCombos, isExtraTurn } from "./bracketRules";
+import { applyBracketLimits, bracketLimits, breakCombos, capPicks, fetchGameChangers, findTwoCardCombos, isExtraTurn } from "./bracketRules";
 
 export const BRACKETS = [
   { id: 1, name: "Exhibition", tag: "Casual / jank", recipe: { ramp: 6, draw: 8, removal: 6, protection: 2, synergy: 15, wincon: 1, utility: 24 } },
@@ -69,17 +69,24 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   nonbasicPool.forEach((c) => { cardData[c.name.toLowerCase()] = c; });
 
   // The bracket's rules on Game Changers, mass land denial and extra turns.
-  // Lands go first since they're picked first. If the Game Changer search
-  // failed, Scryfall's own flag on each card stands in for it.
+  // If the Game Changer search failed, Scryfall's own flag on each card
+  // stands in for it. Cards the bracket bans outright come out of the pools
+  // now; ones it only limits (up to 3 Game Changers, one extra turn) stay in
+  // and are capped once the picks are made, so the allowance goes to cards
+  // the deck actually runs.
   const gameChangers = fetchedGameChangers || new Set(
     [...nonbasicPool, ...Object.values(categoryCards).flat()].filter((c) => c.gameChanger).map((c) => c.name.toLowerCase())
   );
   const commanderIsGameChanger = gameChangers.has(commander.name.toLowerCase()) || Boolean(commander.gameChanger);
+  const gameChangersUsed = commanderIsGameChanger ? 1 : 0;
   const [limitedLands, ...limitedCategories] = applyBracketLimits(
     [nonbasicPool, ...catKeys.map((cat) => categoryCards[cat])],
-    limits,
-    gameChangers,
-    { gameChangersUsed: commanderIsGameChanger ? 1 : 0 }
+    {
+      ...limits,
+      gameChangers: limits.gameChangers - gameChangersUsed > 0 ? Infinity : 0,
+      extraTurns: limits.extraTurns > 0 ? Infinity : 0,
+    },
+    gameChangers
   );
   nonbasicPool.splice(0, nonbasicPool.length, ...limitedLands);
   catKeys.forEach((cat, i) => { categoryCards[cat] = limitedCategories[i]; });
@@ -174,14 +181,35 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
     nonlandTotal += take.length;
   });
 
+  // Everything is picked — now put any leftover budget to work on better
+  // cards instead of leaving it unspent.
+  upgradeWithinBudget(picks, categoryCards, usedNames, cardData, priceSource, budgetState);
+
+  // Then hold the deck to its Game Changer and extra-turn allowance. A card
+  // over the limit is swapped for the next one in its role, and under a
+  // budget only for one that costs no more.
+  const capped = capPicks({ lands: nonbasicsChosen, ...picks }, limits, gameChangers, {
+    gameChangersUsed,
+    replacementsFor: (role, card) => {
+      const pool = role === "lands" ? nonbasicPool : categoryCards[role];
+      if (!budgetActive) return pool;
+      const ceiling = priceFor(card);
+      return [...pool.filter((c) => priceFor(c) <= ceiling), ...cheapestFirst(pool, cardData, priceSource)];
+    },
+  });
+  capped.swaps.forEach(({ from, to }) => {
+    usedNames.delete(from.name.toLowerCase());
+    if (to) usedNames.add(to.name.toLowerCase());
+    if (budgetActive) budgetState.remaining += priceFor(from) - (to ? priceFor(to) : 0);
+  });
+  const { lands: cappedLands, ...cappedPicks } = capped.picks;
+  Object.assign(picks, cappedPicks);
+  nonlandTotal = Object.values(picks).reduce((s, l) => s + l.length, 0);
+
   const deficit = NONLAND_TARGET - nonlandTotal;
   const landTarget = LAND_TARGET + deficit;
 
-  // Everything is picked and capped — now put any leftover budget to work
-  // on better cards instead of leaving it unspent.
-  upgradeWithinBudget(picks, categoryCards, usedNames, cardData, priceSource, budgetState);
-
-  const nonbasics = nonbasicsChosen.map((l) => ({ name: l.name, qty: 1 }));
+  const nonbasics = cappedLands.map((l) => ({ name: l.name, qty: 1 }));
 
   const basicsNeeded = landTarget - nonbasics.length;
   const basics = [];
@@ -217,7 +245,10 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
 
   // Brackets 1 to 3 allow no two-card combos: swap a card out of any the
   // deck ended up with.
-  const comboCheck = await checkCombos(limits, commander, picks, nonbasics, (cat) => categoryCards[cat].map((c) => c.name));
+  // Replacements skip capped cards so a swap can't push the deck over.
+  const comboCheck = await checkCombos(limits, commander, picks, nonbasics, (cat) =>
+    categoryCards[cat].filter((c) => !gameChangers.has(c.name.toLowerCase()) && !isExtraTurn(c)).map((c) => c.name)
+  );
   Object.assign(picks, comboCheck.picks);
 
   // The next-best cards for each role that didn't make the deck, so the

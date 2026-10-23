@@ -73,6 +73,42 @@ export function applyBracketLimits(pools, limits, gameChangers, { gameChangersUs
   );
 }
 
+/* The same caps, applied to a deck's picks once they're made rather than to
+   the candidate pools. Capping the pools spends the allowance on whichever
+   Game Changers come first, which are often never picked, so a bracket 3
+   deck could end up with none. Here the cards actually picked keep the
+   slots, in order, and any over the limit are swapped for the first card
+   from `replacementsFor(role, card)` that isn't capped or already in the
+   deck (or dropped if there's none). Returns the new picks and the swaps. */
+export function capPicks(picks, limits, gameChangers, { gameChangersUsed = 0, replacementsFor = () => [] } = {}) {
+  let gcLeft = limits.gameChangers - gameChangersUsed;
+  let turnsLeft = limits.extraTurns;
+  const capped = (card) => gameChangers.has(card.name.toLowerCase()) || isExtraTurn(card);
+  const inDeck = new Set(Object.values(picks).flat().map((c) => c.name.toLowerCase()));
+  const next = {};
+  const swaps = [];
+  Object.entries(picks).forEach(([role, cards]) => {
+    next[role] = [];
+    cards.forEach((card) => {
+      const gc = gameChangers.has(card.name.toLowerCase());
+      const turn = isExtraTurn(card);
+      if ((!gc || gcLeft > 0) && (!turn || turnsLeft > 0)) {
+        if (gc) gcLeft -= 1;
+        if (turn) turnsLeft -= 1;
+        next[role].push(card);
+        return;
+      }
+      const swapIn = replacementsFor(role, card).find((c) => !capped(c) && !inDeck.has(c.name.toLowerCase()));
+      if (swapIn) {
+        inDeck.add(swapIn.name.toLowerCase());
+        next[role].push(swapIn);
+      }
+      swaps.push({ role, from: card, to: swapIn || null });
+    });
+  });
+  return { picks: next, swaps };
+}
+
 /* Two-card combos in a deck, from Commander Spellbook. Returns pairs of
    card names; throws if Spellbook can't be reached. The request goes
    through the site's own combos function (netlify/functions/combos.mjs);

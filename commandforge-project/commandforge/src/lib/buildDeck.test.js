@@ -90,6 +90,40 @@ describe("buildDeck", () => {
     expect(allCards(deck).reduce((s, c) => s + c.qty, 0)).toBe(99);
   });
 
+  it("leads with the cards real decks with the commander run when inspired", async () => {
+    // A ramp card the search lists last, and a synergy piece no role search
+    // finds at all; EDHREC says real decks run both.
+    const scryfall = fakeScryfall();
+    vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+      if (url.includes("/functions/edhrec")) {
+        return { ok: true, status: 200, json: async () => ({ cards: [
+          { name: "Real Deck Rock", share: 0.7 }, { name: "Commander Combo Piece", share: 0.5 },
+        ] }) };
+      }
+      const q = url.includes("/cards/search") ? decodeURIComponent(new URL(url).searchParams.get("q")) : "";
+      if (q.includes('!"Commander Combo Piece"')) {
+        return { ok: true, status: 200, json: async () => ({ data: [{ name: "Commander Combo Piece", type_line: "Creature — Avatar", prices: { usd: "1.00" }, oracle_text: "" }] }) };
+      }
+      const res = await scryfall(url, init);
+      const json = await res.json();
+      if (q.includes("otag:ramp")) json.data.push({ name: "Real Deck Rock", type_line: "Artifact", prices: { usd: "1.00" }, oracle_text: "{T}: Add {C}." });
+      return { ...res, json: async () => json };
+    }));
+    const deck = await buildDeck(commander, "edhrec", BRACKETS[2], { priceSource: "usd" });
+    expect(deck.picks.ramp.map((c) => c.name)).toContain("Real Deck Rock");
+    expect(deck.picks.synergy.map((c) => c.name)).toContain("Commander Combo Piece");
+    expect(allCards(deck).reduce((s, c) => s + c.qty, 0)).toBe(99);
+  });
+
+  it("builds as before when EDHREC can't be reached", async () => {
+    const scryfall = fakeScryfall();
+    vi.stubGlobal("fetch", vi.fn(async (url, init) =>
+      url.includes("/functions/edhrec") ? { ok: false, status: 502, json: async () => ({}) } : scryfall(url, init)
+    ));
+    const deck = await buildDeck(commander, "edhrec", BRACKETS[2]);
+    expect(allCards(deck).reduce((s, c) => s + c.qty, 0)).toBe(99);
+  });
+
   it("stays within the budget when guessed prices turn out higher", async () => {
     // Every tenth card comes back from the search unpriced, so it's budgeted
     // at a guess, and the later price lookup says it costs $9.99.

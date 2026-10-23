@@ -64,9 +64,11 @@ function oracleOf(card) {
 }
 
 /* Returns a test for whether a card earns its place in this deck. `deck` is
-   every card in it as card data (with typeLine and oracleText), and `theme`
-   is the theme the person picked or the one guessed for the commander. */
-export function relevanceCheck(commander, deck, theme = "") {
+   every card in it as card data (with typeLine and oracleText), `theme` is
+   the theme the person picked or the one guessed for the commander, and
+   `trusted(card)` passes cards known to belong (ones real decks with this
+   commander run). */
+export function relevanceCheck(commander, deck, theme = "", trusted = () => false) {
   const commanderText = oracleOf(commander);
   const themeText = `${commanderText}\n${theme || ""}`;
   const commanderType = commander.typeLine || commander.blurb || "";
@@ -75,7 +77,7 @@ export function relevanceCheck(commander, deck, theme = "") {
 
   return (card) => {
     const text = oracleOf(card);
-    if (!text) return true;
+    if (!text || trusted(card)) return true;
     for (const rule of TYPE_RULES) {
       if (!rule.payoff.test(text) || rule.theme.test(themeText)) continue;
       if (countWhere(rule.supports, card) < rule.min) return false;
@@ -94,10 +96,10 @@ export function relevanceCheck(commander, deck, theme = "") {
 /* Swaps out picks that don't earn their place for the next card in the
    same role that does. `poolFor(role, card)` lists the candidates to
    replace `card`, best first; `allowed(card)` rules out anything else the deck can't take. */
-export function dropIrrelevant(picks, commander, cardData, poolFor, allowed = () => true, theme = "") {
+export function dropIrrelevant(picks, commander, cardData, poolFor, allowed = () => true, theme = "", trusted = () => false) {
   const dataOf = (c) => cardData[c.name.toLowerCase()] || c;
   const deck = Object.values(picks).flat().map(dataOf);
-  const fits = relevanceCheck(commander, deck, theme);
+  const fits = relevanceCheck(commander, deck, theme, trusted);
   const inDeck = new Set(deck.map((c) => c.name.toLowerCase()));
   const next = {};
   const swaps = [];

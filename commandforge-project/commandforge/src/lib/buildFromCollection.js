@@ -3,6 +3,7 @@ import { categoryQuery, nonbasicTarget, fixesFor, fetchLandLimit, limitFetchLand
 import { scryfallSearchCards, mapScryfallCard, fetchScryfallData } from "./scryfall";
 import { popularityWeightedShuffle } from "./budget";
 import { dropIrrelevant } from "./relevance";
+import { edhrecFirst, edhrecRanks, fetchEdhrecCards } from "./edhrec";
 import { NONLAND_TARGET, LAND_TARGET, checkCombos, summariseBracket } from "./buildDeck";
 import { applyBracketLimits, bracketLimits, fetchGameChangers } from "./bracketRules";
 import {
@@ -45,10 +46,12 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
   playable.forEach((c) => { cardData[c.name.toLowerCase()] = mapScryfallCard(c); });
 
   // "Random" builds keep some variety from deck to deck, still weighted
-  // toward the most played cards; "inspired" builds take them in order.
+  // toward the most played cards; "inspired" builds take them in order,
+  // led by the owned cards real decks with this commander run.
+  const edhrec = style === "edhrec" ? edhrecRanks(await fetchEdhrecCards(commander.name)) : new Map();
   const order = (list) => {
     const sorted = [...list].sort(byPopularity);
-    return style === "edhrec" ? sorted : popularityWeightedShuffle(sorted);
+    return style === "edhrec" ? edhrecFirst(sorted, edhrec) : popularityWeightedShuffle(sorted);
   };
   // The bracket's rules on Game Changers, mass land denial and extra turns,
   // with Scryfall's own flag on each card standing in if the search fails.
@@ -99,7 +102,8 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
     picks, commander, cardData,
     () => spells.filter((c) => !usedNames.has(c.name.toLowerCase())).map((c) => ({ name: c.name })),
     () => true,
-    [theme, themeQuery, commander.archetype].filter(Boolean).join("\n")
+    [theme, themeQuery, commander.archetype].filter(Boolean).join("\n"),
+    (c) => edhrec.has(c.name.toLowerCase())
   );
   relevant.swaps.forEach(({ from, to }) => {
     usedNames.delete(from.name.toLowerCase());
@@ -114,13 +118,14 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
   // fill the rest.
   const monoOrder = new Map(monoLandNames(identity).map((n, i) => [n.toLowerCase(), i]));
   const monoRank = (l) => monoOrder.get(l.name.toLowerCase()) ?? Infinity;
-  const landOrder = limitFetchLands(multicolor
+  // Owned lands real decks with this commander run go ahead of either.
+  const landOrder = limitFetchLands(edhrecFirst(multicolor
     ? [...lands.filter((l) => fixesFor(l, identity)), ...lands.filter((l) => !fixesFor(l, identity))]
     // Mono-colour: the colour's staple lands first, and none that only help
     // other colours.
     : [...lands.filter((l) => monoOrder.has(l.name.toLowerCase())).sort((a, b) => monoRank(a) - monoRank(b)),
       ...lands.filter((l) => !monoOrder.has(l.name.toLowerCase()) && (identity.length !== 1 || worksInMono(l, identity)))],
-  fetchLandLimit(identity, bracket));
+  edhrec), fetchLandLimit(identity, bracket));
   const nonbasicCap = Math.max(0, Math.min(nonbasicTarget(identity, bracket), LAND_TARGET - 2 * identity.length));
   const nonbasics = landOrder.slice(0, nonbasicCap).map((l) => {
     usedNames.add(l.name.toLowerCase());

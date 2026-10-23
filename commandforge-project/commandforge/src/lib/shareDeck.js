@@ -3,6 +3,13 @@
 // from a local address) still open on the web.
 export const SITE_URL = "https://brewhall.co.uk";
 
+/* Where one of the site's own functions (netlify/functions) answers. The
+   phone apps run from a local address, so they use the live site's. */
+export function functionUrl(name) {
+  const onSite = typeof window !== "undefined" && /^https?:$/.test(window.location.protocol) && window.location.hostname !== "localhost";
+  return `${onSite ? "" : SITE_URL}/.netlify/functions/${name}`;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function shareUrl(deckId) {

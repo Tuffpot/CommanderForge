@@ -42,7 +42,7 @@
         <a href="#what">What is Brewhall?</a>
         <a href="#ai">Is it AI?</a>
         <a href="#legal">Are the decks legal?</a>
-        <a href="#brackets">What do the brackets change?</a>
+        <a href="#brackets">How does it follow the bracket rules?</a>
         <a href="#prices">Where do prices come from?</a>
         <a href="#budget">How does the budget work?</a>
         <a href="#collection">Can it use my own cards?</a>
@@ -78,8 +78,34 @@
 
       <h2 id="brackets">What do the brackets change?</h2>
       <p>
-        Brewhall uses the five Commander brackets to decide the mix of the deck. Higher brackets get more ramp,
-        removal and protection, and fewer slots for fun or flavourful cards.
+        Two things. First, Brewhall follows Wizards' official
+        <a href="https://magic.wizards.com/en/news/announcements/introducing-commander-brackets-beta">Commander bracket</a>
+        rules for what a deck may include:
+      </p>
+      <table>
+        <tr><th>Bracket</th><th>Game Changers</th><th>Mass land denial</th><th>Extra turns</th><th>Two-card combos</th></tr>
+        <tr><td>1. Exhibition</td><td>None</td><td>None</td><td>None</td><td>None</td></tr>
+        <tr><td>2. Core</td><td>None</td><td>None</td><td>One at most</td><td>None</td></tr>
+        <tr><td>3. Upgraded</td><td>Up to 3</td><td>None</td><td>One at most</td><td>None</td></tr>
+        <tr><td>4. Optimized</td><td>Any</td><td>Allowed</td><td>Allowed</td><td>Allowed</td></tr>
+        <tr><td>5. cEDH</td><td>Any</td><td>Allowed</td><td>Allowed</td><td>Allowed</td></tr>
+      </table>
+      <p>
+        The Game Changers list comes live from Scryfall, so it's always the current one. If your commander is
+        itself a Game Changer, the deck can't be bracket 1 or 2, and the results page says so. Mass land denial
+        means well-known cards like Armageddon, Blood Moon and Winter Orb. The official rules allow a few extra
+        turns as long as they don't chain, and Brewhall keeps it to one so they can't. They also allow two-card
+        combos in bracket 3 if they only come together late in the game. Brewhall can't tell early from late, so
+        it leaves them out of bracket 3 altogether.
+      </p>
+      <p>
+        Combos are checked with <a href="https://commanderspellbook.com">Commander Spellbook</a> once the deck is
+        built. If it finds one, Brewhall swaps one of the two cards for another that does the same job. Every
+        results page has a <strong>Bracket rules</strong> panel showing what was checked.
+      </p>
+      <p>
+        Second, the bracket sets the mix of the deck. Higher brackets get more ramp, removal and protection, and
+        fewer slots for fun or flavourful cards.
       </p>
       <table>
         <tr><th>Bracket</th><th>Ramp</th><th>Removal</th><th>Win conditions</th></tr>
@@ -89,11 +115,6 @@
         <tr><td>4. Optimized</td><td>12</td><td>11</td><td>5</td></tr>
         <tr><td>5. cEDH</td><td>14</td><td>12</td><td>5</td></tr>
       </table>
-      <p>
-        Brewhall doesn't yet count Game Changers or check for two-card combos the way the official bracket
-        guidelines do. If your group plays strictly by those rules, look over a bracket 1 to 3 deck before
-        game night.
-      </p>
 
       <h2 id="prices">Where do prices come from?</h2>
       <p>

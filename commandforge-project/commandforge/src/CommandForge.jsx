@@ -6,6 +6,7 @@ import { buildDeck, NONLAND_TARGET } from "./lib/buildDeck";
 import { buildDeckFromCollection } from "./lib/buildFromCollection";
 import { parseCollectionText, fetchCollectionCards, mergeEntries, ownedCommanders, playableCount } from "./lib/collection";
 import { HOUSE_NAMES } from "./lib/colors";
+import { isExtraTurn } from "./lib/bracketRules";
 import { mapDeckRow, shareUrl, sharedDeckIdFromUrl } from "./lib/shareDeck";
 import { archidektList, cardmarketList, moxfieldList, neededList } from "./lib/exportDeck";
 import Header from "./components/Header";
@@ -546,6 +547,7 @@ export default function CommandForge() {
         missingCount: built.missingCount || 0,
         picks: built.picks,
         alternatives: built.alternatives || {},
+        bracketCheck: built.bracketCheck || null,
         nonbasics: built.nonbasics,
         basics: built.basics,
       });
@@ -681,7 +683,14 @@ export default function CommandForge() {
       if (!d) return d;
       const picks = { ...d.picks, [cat]: d.picks[cat].map((c) => (c.name === oldName ? { name: newName } : c)) };
       const alts = (d.alternatives?.[cat] || []).filter((n) => n !== newName);
-      return { ...d, picks, alternatives: { ...d.alternatives, [cat]: [oldName, ...alts] } };
+      // Keep the bracket check's Game Changer and extra-turn lists current.
+      const incoming = cardData[newName.toLowerCase()];
+      const check = d.bracketCheck && {
+        ...d.bracketCheck,
+        gameChangers: [...d.bracketCheck.gameChangers.filter((n) => n !== oldName), ...(incoming?.gameChanger ? [newName] : [])],
+        extraTurns: [...d.bracketCheck.extraTurns.filter((n) => n !== oldName), ...(isExtraTurn(incoming) ? [newName] : [])],
+      };
+      return { ...d, picks, bracketCheck: check, alternatives: { ...d.alternatives, [cat]: [oldName, ...alts] } };
     });
     setPreviewCard(null);
   }

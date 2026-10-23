@@ -5,6 +5,7 @@ import {
   priceOf, UNKNOWN_PRICE_ESTIMATE, cheapestFirst, spend, orderCandidates,
   pickWithinBudget, AUTO_INCLUDES, pullStaples, upgradeWithinBudget,
 } from "./budget";
+import { applyBracketLimits, bracketLimits, breakCombos, fetchGameChangers, findTwoCardCombos, isExtraTurn } from "./bracketRules";
 
 export const BRACKETS = [
   { id: 1, name: "Exhibition", tag: "Casual / jank", recipe: { ramp: 6, draw: 8, removal: 6, protection: 2, synergy: 15, wincon: 1, utility: 24 } },
@@ -29,7 +30,8 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   const catKeys = Object.keys(recipe);
   const multicolor = identity.length > 1;
   const ownCommanderPrice = priceSource === "eur" ? commander.priceEur : commander.priceUsd;
-  const [categoryResults, nonbasicRaw, fixingLands, commanderPrinting] = await Promise.all([
+  const limits = bracketLimits(bracket.id);
+  const [categoryResults, nonbasicRaw, fixingLands, commanderPrinting, fetchedGameChangers] = await Promise.all([
     Promise.all(catKeys.map((cat) => scryfallSearchCards(categoryQuery(cat, identity, commander, style, themeQuery), priceSource).catch(() => []))),
     scryfallSearchCards(`f:commander id<=${identity.join("").toLowerCase() || "c"} t:land -t:basic`, priceSource).catch(() => []),
     multicolor ? fetchFixingLands(identity, priceSource) : Promise.resolve([]),
@@ -38,6 +40,7 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
     priceSource !== "none" && ownCommanderPrice == null
       ? fetchCheapestPrintings([commander.name], priceSource).catch(() => ({}))
       : Promise.resolve({}),
+    limits.gameChangers < Infinity ? fetchGameChangers(identity).catch(() => null) : Promise.resolve(new Set()),
   ]);
   Object.assign(cardData, commanderPrinting);
 
@@ -64,6 +67,22 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
     ...nonbasicRaw.map(mapScryfallCard).filter((c) => !fixingNames.has(c.name.toLowerCase())),
   ];
   nonbasicPool.forEach((c) => { cardData[c.name.toLowerCase()] = c; });
+
+  // The bracket's rules on Game Changers, mass land denial and extra turns.
+  // Lands go first since they're picked first. If the Game Changer search
+  // failed, Scryfall's own flag on each card stands in for it.
+  const gameChangers = fetchedGameChangers || new Set(
+    [...nonbasicPool, ...Object.values(categoryCards).flat()].filter((c) => c.gameChanger).map((c) => c.name.toLowerCase())
+  );
+  const commanderIsGameChanger = gameChangers.has(commander.name.toLowerCase()) || Boolean(commander.gameChanger);
+  const [limitedLands, ...limitedCategories] = applyBracketLimits(
+    [nonbasicPool, ...catKeys.map((cat) => categoryCards[cat])],
+    limits,
+    gameChangers,
+    { gameChangersUsed: commanderIsGameChanger ? 1 : 0 }
+  );
+  nonbasicPool.splice(0, nonbasicPool.length, ...limitedLands);
+  catKeys.forEach((cat, i) => { categoryCards[cat] = limitedCategories[i]; });
 
   const budgetActive = budget != null && budget > 0 && priceSource !== "none";
   // The commander is part of the deck's cost, so its price comes off the
@@ -196,6 +215,11 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
     }
   }
 
+  // Brackets 1 to 3 allow no two-card combos: swap a card out of any the
+  // deck ended up with.
+  const comboCheck = await checkCombos(limits, commander, picks, nonbasics, (cat) => categoryCards[cat].map((c) => c.name));
+  Object.assign(picks, comboCheck.picks);
+
   // The next-best cards for each role that didn't make the deck, so the
   // result screen can offer a swap.
   const inDeck = new Set([commander.name, ...Object.values(picks).flat().map((c) => c.name), ...nonbasics.map((l) => l.name)].map((n) => n.toLowerCase()));
@@ -204,7 +228,41 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
     alternatives[cat] = categoryCards[cat].filter((c) => !inDeck.has(c.name.toLowerCase())).slice(0, ALTERNATIVES_PER_ROLE).map((c) => c.name);
   });
 
-  return { picks, nonbasics, basics, alternatives, budgetActive, budgetRemaining: budgetState.remaining, cardData, shortfall: Math.max(0, deficit) };
+  const bracketCheck = summariseBracket(limits, commander, picks, nonbasics, cardData, gameChangers, commanderIsGameChanger, comboCheck);
+  return { picks, nonbasics, basics, alternatives, bracketCheck, budgetActive, budgetRemaining: budgetState.remaining, cardData, shortfall: Math.max(0, deficit) };
+}
+
+/* Looks the finished deck up on Commander Spellbook when the bracket bans
+   two-card combos, and breaks any it finds. `alternativesFor(cat)` lists
+   replacement candidates for a role. `status` is "not-needed", "clear",
+   "removed" or "unavailable" (Spellbook couldn't be reached). */
+export async function checkCombos(limits, commander, picks, nonbasics, alternativesFor) {
+  if (limits.twoCardCombos) return { picks, removed: [], status: "not-needed" };
+  const names = [...Object.values(picks).flat().map((c) => c.name), ...nonbasics.map((l) => l.name)];
+  try {
+    const combos = await findTwoCardCombos(commander.name, names);
+    if (!combos.length) return { picks, removed: [], status: "clear" };
+    const alternatives = Object.fromEntries(Object.keys(picks).map((cat) => [cat, alternativesFor(cat)]));
+    const broken = breakCombos(picks, combos, alternatives, commander.name);
+    return { ...broken, status: broken.removed.length ? "removed" : "clear" };
+  } catch {
+    return { picks, removed: [], status: "unavailable" };
+  }
+}
+
+// What the result screen shows about how the deck meets its bracket.
+export function summariseBracket(limits, commander, picks, nonbasics, cardData, gameChangers, commanderIsGameChanger, comboCheck) {
+  const names = [...Object.values(picks).flat().map((c) => c.name), ...nonbasics.map((l) => l.name)];
+  return {
+    gameChangerLimit: limits.gameChangers,
+    gameChangers: [...(commanderIsGameChanger ? [commander.name] : []), ...names.filter((n) => gameChangers.has(n.toLowerCase()))],
+    commanderOverLimit: commanderIsGameChanger && limits.gameChangers === 0,
+    extraTurnLimit: limits.extraTurns,
+    extraTurns: names.filter((n) => isExtraTurn(cardData[n.toLowerCase()])),
+    massLandDenialAllowed: limits.massLandDenial,
+    combos: comboCheck.status,
+    combosRemoved: comboCheck.removed,
+  };
 }
 
 export const CAT_LABELS = {

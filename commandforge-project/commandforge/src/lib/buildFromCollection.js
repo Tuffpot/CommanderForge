@@ -2,7 +2,8 @@ import { BASIC_LAND } from "./colors";
 import { categoryQuery, nonbasicTarget, fixesFor } from "./queries";
 import { scryfallSearchCards, mapScryfallCard, fetchScryfallData } from "./scryfall";
 import { popularityWeightedShuffle } from "./budget";
-import { NONLAND_TARGET, LAND_TARGET } from "./buildDeck";
+import { NONLAND_TARGET, LAND_TARGET, checkCombos, summariseBracket } from "./buildDeck";
+import { applyBracketLimits, bracketLimits, fetchGameChangers } from "./bracketRules";
 import {
   CATEGORY_TESTS, synergyTest, fullText, isLand, isBasicLand, legalInCommander, fitsIdentity, byPopularity,
 } from "./collection";
@@ -48,8 +49,20 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
     const sorted = [...list].sort(byPopularity);
     return style === "edhrec" ? sorted : popularityWeightedShuffle(sorted);
   };
-  const spells = order(playable.filter((c) => !isLand(c)));
-  const lands = playable.filter(isLand).sort(byPopularity);
+  // The bracket's rules on Game Changers, mass land denial and extra turns,
+  // with Scryfall's own flag on each card standing in if the search fails.
+  const limits = bracketLimits(bracket.id);
+  const gameChangers = limits.gameChangers < Infinity
+    ? (await fetchGameChangers(identity).catch(() => null)) ||
+      new Set(Object.values(ownedCards).filter((c) => c.game_changer).map((c) => c.name.toLowerCase()))
+    : new Set();
+  const commanderIsGameChanger = gameChangers.has(commanderKey) || Boolean(commander.gameChanger);
+  const [spells, lands] = applyBracketLimits(
+    [order(playable.filter((c) => !isLand(c))), playable.filter(isLand).sort(byPopularity)],
+    limits,
+    gameChangers,
+    { gameChangersUsed: commanderIsGameChanger ? 1 : 0 }
+  );
 
   const tests = { ...CATEGORY_TESTS, synergy: synergyTest(commander, style, theme) || (() => true) };
   const take = (cat, card) => {
@@ -101,10 +114,12 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
         scryfallSearchCards(categoryQuery(cat, identity, commander, style, themeQuery), priceSource).catch(() => [])
       )
     );
+    // Cards to buy never take a Game Changer or extra-turn slot the
+    // collection might already have used.
+    const strict = limits.gameChangers < Infinity ? { ...limits, gameChangers: 0, extraTurns: 0 } : limits;
     shortCats.forEach((cat, i) => {
-      searched[cat] = results[i]
-        .filter((c) => !ownedCards[c.name.toLowerCase()] && c.name.toLowerCase() !== commanderKey)
-        .map(mapScryfallCard);
+      searched[cat] = applyBracketLimits([results[i].map(mapScryfallCard)], strict, gameChangers)[0]
+        .filter((c) => !ownedCards[c.name.toLowerCase()] && c.name.toLowerCase() !== commanderKey);
       searched[cat].forEach((c) => { cardData[c.name.toLowerCase()] = c; });
     });
   }
@@ -144,10 +159,18 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
     // basics are near-free either way; missing images here are harmless
   }
 
+  // Brackets 1 to 3 allow no two-card combos. A combo card is swapped for
+  // the next owned spell that isn't in the deck.
+  const comboCheck = await checkCombos(limits, commander, picks, nonbasics, () =>
+    spells.filter((c) => !usedNames.has(c.name.toLowerCase())).map((c) => c.name)
+  );
+  Object.assign(picks, comboCheck.picks);
+
   return {
     picks,
     nonbasics,
     basics,
+    bracketCheck: summariseBracket(limits, commander, picks, nonbasics, cardData, gameChangers, commanderIsGameChanger, comboCheck),
     cardData,
     shortfall: Math.max(0, deficit),
     shortRoles,

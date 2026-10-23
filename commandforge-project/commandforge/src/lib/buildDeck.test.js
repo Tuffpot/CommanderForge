@@ -73,6 +73,23 @@ describe("buildDeck", () => {
     expect(deckCost(deck) + 5).toBeGreaterThan(budget * 0.8);
   });
 
+  it("gives a mono-colour deck its colour's staple lands first", async () => {
+    const scryfall = fakeScryfall();
+    vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+      const q = url.includes("/cards/search") ? decodeURIComponent(new URL(url).searchParams.get("q")) : "";
+      if (q.includes('!"Cabal Coffers"')) {
+        const names = [...q.matchAll(/!"([^"]+)"/g)].map((m) => m[1]);
+        return { ok: true, status: 200, json: async () => ({ data: names.map((name) => ({ name, prices: { usd: "1.00" }, oracle_text: "" })) }) };
+      }
+      return scryfall(url, init);
+    }));
+    const monoBlack = { name: "Mono Commander", identity: ["B"], archetype: null, priceUsd: "1.00", priceEur: null };
+    const deck = await buildDeck(monoBlack, "edhrec", BRACKETS[2], { priceSource: "usd" });
+    expect(deck.nonbasics.map((l) => l.name).slice(0, 3)).toEqual(["Cabal Coffers", "Urborg, Tomb of Yawgmoth", "Castle Locthwain"]);
+    expect(deck.nonbasics).toHaveLength(6);
+    expect(allCards(deck).reduce((s, c) => s + c.qty, 0)).toBe(99);
+  });
+
   it("stays within the budget when guessed prices turn out higher", async () => {
     // Every tenth card comes back from the search unpriced, so it's budgeted
     // at a guess, and the later price lookup says it costs $9.99.

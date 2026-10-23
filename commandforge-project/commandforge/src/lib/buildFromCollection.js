@@ -1,5 +1,5 @@
 import { BASIC_LAND } from "./colors";
-import { categoryQuery, nonbasicTarget, fixesFor, fetchLandLimit, limitFetchLands } from "./queries";
+import { categoryQuery, nonbasicTarget, fixesFor, fetchLandLimit, limitFetchLands, monoLandNames, worksInMono } from "./queries";
 import { scryfallSearchCards, mapScryfallCard, fetchScryfallData } from "./scryfall";
 import { popularityWeightedShuffle } from "./budget";
 import { dropIrrelevant } from "./relevance";
@@ -112,9 +112,15 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
   const multicolor = identity.length > 1;
   // Only as many fetch lands as real decks at this level run, so dual lands
   // fill the rest.
+  const monoOrder = new Map(monoLandNames(identity).map((n, i) => [n.toLowerCase(), i]));
+  const monoRank = (l) => monoOrder.get(l.name.toLowerCase()) ?? Infinity;
   const landOrder = limitFetchLands(multicolor
     ? [...lands.filter((l) => fixesFor(l, identity)), ...lands.filter((l) => !fixesFor(l, identity))]
-    : lands, fetchLandLimit(identity, bracket));
+    // Mono-colour: the colour's staple lands first, and none that only help
+    // other colours.
+    : [...lands.filter((l) => monoOrder.has(l.name.toLowerCase())).sort((a, b) => monoRank(a) - monoRank(b)),
+      ...lands.filter((l) => !monoOrder.has(l.name.toLowerCase()) && (identity.length !== 1 || worksInMono(l, identity)))],
+  fetchLandLimit(identity, bracket));
   const nonbasicCap = Math.max(0, Math.min(nonbasicTarget(identity, bracket), LAND_TARGET - 2 * identity.length));
   const nonbasics = landOrder.slice(0, nonbasicCap).map((l) => {
     usedNames.add(l.name.toLowerCase());

@@ -56,6 +56,7 @@ const TRIBAL_MIN = 10;
 const NOT_TRIBES = new Set([
   "Creature", "Token", "Permanent", "Spell", "Artifact", "Enchantment", "Land", "Planeswalker", "Equipment",
   "Aura", "Vehicle", "Legendary", "Nonland", "Noncreature", "Other", "Each", "All", "Attacking", "Untapped", "Tapped",
+  "Plains", "Island", "Swamp", "Mountain", "Forest", "Gate", "Desert", "Treasure", "Clue", "Food",
 ]);
 
 function oracleOf(card) {

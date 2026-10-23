@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   guessArchetype, buildNameQuery, filterAndSortByName, buildColorQuery, normalizeThemeKey,
-  singularType, resolveThemeQuery, categoryQuery, nonbasicTarget, fixesFor, isFetchLand, limitFetchLands, fetchLandLimit, ARCHETYPE_QUERIES,
+  singularType, resolveThemeQuery, categoryQuery, nonbasicTarget, fixesFor, isFetchLand, limitFetchLands, fetchLandLimit, monoLandNames, worksInMono, ARCHETYPE_QUERIES,
 } from "./queries";
 
 describe("guessArchetype", () => {
@@ -103,7 +103,7 @@ describe("nonbasicTarget", () => {
   const bracket = (id) => ({ id });
 
   it("runs more nonbasic lands the more colours and the higher the bracket", () => {
-    expect(nonbasicTarget(["R"], bracket(1))).toBe(1);
+    expect(nonbasicTarget(["R"], bracket(1))).toBe(4);
     expect(nonbasicTarget(["R", "G"], bracket(2))).toBe(10);
     expect(nonbasicTarget(["W", "U", "B", "R", "G"], bracket(4))).toBe(23);
     expect(nonbasicTarget([], bracket(3))).toBe(11);
@@ -153,5 +153,19 @@ describe("fetch lands", () => {
     expect(fetchLandLimit(["W", "U", "B", "R", "G"], b(5))).toBe(10);
     expect(fetchLandLimit(["W", "U", "B", "R", "G"], b(5), 100)).toBe(2);
     expect(fetchLandLimit(["W", "U", "B", "R", "G"], b(5), 500)).toBe(10);
+  });
+});
+
+describe("mono-colour lands", () => {
+  it("lists the colour's staple lands, then ones good in any mono deck", () => {
+    expect(monoLandNames(["B"])).toEqual(expect.arrayContaining(["Cabal Coffers", "Urborg, Tomb of Yawgmoth", "Castle Locthwain", "Reliquary Tower"]));
+    expect(monoLandNames(["U", "B"])).toEqual([]);
+  });
+
+  it("drops lands that only help other colours", () => {
+    expect(worksInMono({ name: "Exotic Orchard", oracle_text: "{T}: Add one mana of any color that a land an opponent controls could produce." }, ["B"])).toBe(false);
+    expect(worksInMono({ name: "Flooded Strand", oracle_text: "{T}, Pay 1 life, Sacrifice Flooded Strand: Search your library for a Plains or Island card, put it onto the battlefield, then shuffle." }, ["B"])).toBe(false);
+    expect(worksInMono({ name: "Marsh Flats", oracle_text: "{T}, Pay 1 life, Sacrifice Marsh Flats: Search your library for a Plains or Swamp card, put it onto the battlefield, then shuffle." }, ["B"])).toBe(true);
+    expect(worksInMono({ name: "Bojuka Bog", oracle_text: "Bojuka Bog enters tapped. When Bojuka Bog enters, exile target player's graveyard. {T}: Add {B}." }, ["B"])).toBe(true);
   });
 });

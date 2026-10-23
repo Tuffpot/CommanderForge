@@ -224,11 +224,41 @@ export const FIXING_TIERS = [
 export function nonbasicTarget(identity, bracket) {
   // Colourless decks lean on lands like Ancient Tomb and Eldrazi Temple.
   if (identity.length === 0) return 8 + bracket.id;
-  if (identity.length === 1) return 1 + (bracket.id - 1);
+  // Mono-colour decks run a handful of lands that reward the one colour
+  // (Cabal Coffers, Castle Locthwain) alongside utility lands.
+  if (identity.length === 1) return 3 + bracket.id;
   // Roughly what real decks run: a two-colour deck around 10 nonbasics, a
   // five-colour deck well over 20.
   const base = { 2: 8, 3: 12, 4: 16 }[identity.length] ?? 19;
   return base + bracket.id;
+}
+
+/* The lands real mono-colour decks reach for: ones that reward a single
+   colour, plus the colour's channel land and castle. Searched by name so
+   they're always considered, then picked first (within budget and the
+   bracket's limits) ahead of other popular lands. */
+export const MONO_LANDS = {
+  W: ["Castle Ardenvale", "Eiganjo, Seat of the Empire", "Emeria, the Sky Ruin", "Kor Haven", "Karakas"],
+  U: ["Castle Vantress", "Otawara, Soaring City", "Mystic Sanctuary", "Minamo, School at Water's Edge", "Oboro, Palace in the Clouds"],
+  B: ["Cabal Coffers", "Urborg, Tomb of Yawgmoth", "Castle Locthwain", "Takenuma, Abandoned Mire", "Cabal Stronghold", "Bojuka Bog"],
+  R: ["Castle Embereth", "Sokenzan, Crucible of Bonds", "Dwarven Mine", "Hall of the Bandit Lord"],
+  G: ["Castle Garenbrig", "Boseiju, Who Endures", "Yavimaya Hollow", "Gaea's Cradle"],
+};
+// Good in any mono-colour deck.
+export const MONO_LANDS_ANY = ["Nykthos, Shrine to Nyx", "Reliquary Tower", "Rogue's Passage"];
+
+export function monoLandNames(identity) {
+  return identity.length === 1 ? [...(MONO_LANDS[identity[0]] || []), ...MONO_LANDS_ANY] : [];
+}
+
+// Lands that only help a deck with more colours: any-colour lands that
+// depend on opponents, and fetches that can't find this colour's basic.
+const WASTED_IN_MONO = new Set(["exotic orchard", "reflecting pool", "fellwar stone"]);
+export function worksInMono(card, identity) {
+  if (WASTED_IN_MONO.has(card.name.toLowerCase())) return false;
+  const text = (card.oracle_text || card.oracleText || "").toLowerCase();
+  if (!/search your library for an? /.test(text) || text.includes("basic land")) return true;
+  return text.includes(BASIC_LAND[identity[0]].toLowerCase());
 }
 
 // Keeps a land only if it really fixes for this deck: it makes at least two

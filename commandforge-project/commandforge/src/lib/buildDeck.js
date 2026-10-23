@@ -1,5 +1,5 @@
 import { BASIC_LAND } from "./colors";
-import { categoryQuery, fetchLandLimit, limitFetchLands, nonbasicTarget } from "./queries";
+import { categoryQuery, fetchLandLimit, limitFetchLands, monoLandNames, nonbasicTarget, worksInMono } from "./queries";
 import { scryfallSearchCards, mapScryfallCard, fetchFixingLands, fetchCheapestPrintings, fetchScryfallData } from "./scryfall";
 import {
   priceOf, UNKNOWN_PRICE_ESTIMATE, cheapestFirst, spend, orderCandidates,
@@ -32,7 +32,8 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   const multicolor = identity.length > 1;
   const ownCommanderPrice = priceSource === "eur" ? commander.priceEur : commander.priceUsd;
   const limits = bracketLimits(bracket.id);
-  const [categoryResults, nonbasicRaw, fixingLands, commanderPrinting, fetchedGameChangers] = await Promise.all([
+  const monoLands = monoLandNames(identity);
+  const [categoryResults, nonbasicRaw, fixingLands, commanderPrinting, fetchedGameChangers, monoLandCards] = await Promise.all([
     Promise.all(catKeys.map((cat) => scryfallSearchCards(categoryQuery(cat, identity, commander, style, themeQuery), priceSource).catch(() => []))),
     scryfallSearchCards(`f:commander id<=${identity.join("").toLowerCase() || "c"} t:land -t:basic`, priceSource).catch(() => []),
     multicolor ? fetchFixingLands(identity, priceSource) : Promise.resolve([]),
@@ -42,6 +43,9 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
       ? fetchCheapestPrintings([commander.name], priceSource).catch(() => ({}))
       : Promise.resolve({}),
     limits.gameChangers < Infinity ? fetchGameChangers(identity).catch(() => null) : Promise.resolve(new Set()),
+    monoLands.length
+      ? scryfallSearchCards(`f:commander (${monoLands.map((n) => `!"${n}"`).join(" or ")})`, priceSource).catch(() => [])
+      : Promise.resolve([]),
   ]);
   Object.assign(cardData, commanderPrinting);
 
@@ -62,12 +66,21 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   });
   // Multicolour pools put the tiered fixing lands first, then whatever other
   // popular lands are left (utility lands like Reliquary Tower).
-  const fixingNames = new Set(fixingLands.map((c) => c.name.toLowerCase()));
+  // Mono-colour pools put the colour's staple lands first instead, in the
+  // order they're listed, and drop lands that only help other colours.
+  const monoOrder = new Map(monoLands.map((n, i) => [n.toLowerCase(), i]));
+  const firstLands = multicolor
+    ? fixingLands
+    : monoLandCards.map(mapScryfallCard).sort((a, b) => (monoOrder.get(a.name.toLowerCase()) ?? 99) - (monoOrder.get(b.name.toLowerCase()) ?? 99));
+  const firstNames = new Set(firstLands.map((c) => c.name.toLowerCase()));
   // Only as many fetch lands as real decks at this level run, so dual lands
   // fill the rest.
   const nonbasicPool = limitFetchLands([
-    ...fixingLands,
-    ...nonbasicRaw.map(mapScryfallCard).filter((c) => !fixingNames.has(c.name.toLowerCase())),
+    ...firstLands,
+    ...nonbasicRaw
+      .filter((c) => identity.length !== 1 || worksInMono(c, identity))
+      .map(mapScryfallCard)
+      .filter((c) => !firstNames.has(c.name.toLowerCase())),
   ], fetchLandLimit(identity, bracket, priceSource !== "none" ? budget : null));
   nonbasicPool.forEach((c) => { cardData[c.name.toLowerCase()] = c; });
 
@@ -146,7 +159,14 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
 
   // Fixing lands keep their tier order (best cycles first) so the budget
   // check walks down from shocks and fetches to gain lands and guildgates.
-  const nonbasicCandidates = multicolor ? nonbasicRest : orderCandidates(nonbasicRest, cardData, priceSource, preferExpensive);
+  // A mono-colour deck's staple lands go first too, then the rest by the
+  // usual order.
+  const nonbasicCandidates = multicolor
+    ? nonbasicRest
+    : [
+      ...nonbasicRest.filter((l) => firstNames.has(l.name.toLowerCase())),
+      ...orderCandidates(nonbasicRest.filter((l) => !firstNames.has(l.name.toLowerCase())), cardData, priceSource, preferExpensive),
+    ];
   const cheapNonbasics = cheapestFirst(nonbasicRest, cardData, priceSource);
   // Leave room for a couple of basics of each colour so fetch lands have
   // targets. Any nonland shortfall later only adds more basics.

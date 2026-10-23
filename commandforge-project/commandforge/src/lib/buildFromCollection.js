@@ -95,8 +95,11 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
 
   // Swap out payoffs the deck can't use, like Mystic Forge in a deck with a
   // handful of artifacts, for another owned spell.
-  const relevant = dropIrrelevant(picks, commander, cardData, () =>
-    spells.filter((c) => !usedNames.has(c.name.toLowerCase())).map((c) => ({ name: c.name }))
+  const relevant = dropIrrelevant(
+    picks, commander, cardData,
+    () => spells.filter((c) => !usedNames.has(c.name.toLowerCase())).map((c) => ({ name: c.name })),
+    () => true,
+    [theme, themeQuery, commander.archetype].filter(Boolean).join("\n")
   );
   relevant.swaps.forEach(({ from, to }) => {
     usedNames.delete(from.name.toLowerCase());

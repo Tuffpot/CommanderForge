@@ -211,7 +211,7 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   // And swap out payoffs the deck can't use, like Mystic Forge in a deck
   // with a handful of artifacts.
   const uncapped = (c) => !gameChangers.has(c.name.toLowerCase()) && !isExtraTurn(c);
-  const relevant = dropIrrelevant(picks, commander, cardData, replacementsFor, uncapped);
+  const relevant = dropIrrelevant(picks, commander, cardData, replacementsFor, uncapped, [themeQuery, commander.archetype].filter(Boolean).join("\n"));
   noteSwaps(relevant.swaps);
   Object.assign(picks, relevant.picks);
   const fitsDeck = (c) => uncapped(c) && relevant.fits(cardData[c.name.toLowerCase()] || c);

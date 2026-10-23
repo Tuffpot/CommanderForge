@@ -17,8 +17,14 @@ describe("relevanceCheck", () => {
     expect(fits(forge)).toBe(false);
   });
 
-  it("keeps it in an artifact deck", () => {
-    expect(relevanceCheck(sephiroth, [forge, ...filler(16, "Artifact")])(forge)).toBe(true);
+  it("rejects affinity cards in a deck whose only artifacts are mana rocks and boots", () => {
+    const thoughtcast = { name: "Thoughtcast", typeLine: "Sorcery", oracleText: "Affinity for artifacts\nDraw two cards." };
+    expect(relevanceCheck(sephiroth, [thoughtcast, ...filler(18, "Artifact")])(thoughtcast)).toBe(false);
+  });
+
+  it("keeps artifact payoffs when artifacts are the picked theme, or the deck is full of them", () => {
+    expect(relevanceCheck(sephiroth, [forge], "Artifacts")(forge)).toBe(true);
+    expect(relevanceCheck(sephiroth, [forge, ...filler(30, "Artifact")])(forge)).toBe(true);
   });
 
   it("keeps a payoff the commander shares", () => {

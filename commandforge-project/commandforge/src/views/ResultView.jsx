@@ -1,4 +1,5 @@
-import { ChevronLeft, Loader2, Save } from "lucide-react";
+import { useState } from "react";
+import { Check, ChevronLeft, Lightbulb, Loader2, Pencil, Save, Swords } from "lucide-react";
 import { CommanderArt } from "../components/CardImages";
 import AdSlot from "../components/AdSlot";
 import CardRow from "../components/CardRow";
@@ -6,9 +7,17 @@ import ExportButtons from "../components/ExportButtons";
 import ColorPips from "../components/ColorPips";
 import BracketCheck from "../components/BracketCheck";
 import DeckStats from "../components/DeckStats";
+import AddCardSearch from "../components/AddCardSearch";
+import PriceSourcePicker from "../components/PriceSourcePicker";
 import { formatPrice, priceOf } from "../lib/budget";
 import { CAT_LABELS } from "../lib/buildDeck";
-import { describeDeck } from "../lib/describeDeck";
+import { deckOverview, playstyleName, strategyBlurb } from "../lib/describeDeck";
+import { DECK_SIZE, deckHas, deckSize } from "../lib/editDeck";
+import { includeIssueText } from "../lib/cardLists";
+
+// How many suggested additions to show for each role.
+const SUGGESTIONS_SHOWN = 3;
+const SUGGESTIONS_SHOWN_EDITING = 6;
 
 // Cards in a collection build the person doesn't own yet.
 function neededCount(deck) {
@@ -29,6 +38,16 @@ function CategoryHeading({ label, count }) {
 }
 
 export default function ResultView({
+  addSearchedCard,
+  addToDeck,
+  changePriceSource,
+  evenOutDeck,
+  loadSuggestedAdditions,
+  openMyDecks,
+  pricesRefreshing,
+  removeFromDeck,
+  savedNotice,
+  suggestionsStatus,
   cardData,
   cardDataStatus,
   copied,
@@ -43,11 +62,29 @@ export default function ResultView({
   setPreviewCard,
   setSaveModalOpen,
 }) {
+  // A deck opened from My decks starts in editing, since that's what it
+  // was opened for.
+  const [editing, setEditing] = useState(Boolean(deck.savedId));
+  const size = deckSize(deck);
+  const inDeck = (name) => deckHas(deck, name);
+  const suggestedRoles = Object.entries(deck.alternatives || {}).filter(([, names]) => names.length);
+
   return (
     <div className="cf-fade">
       <button onClick={reset} className="flex items-center gap-1 text-sm text-parchment/50 hover:text-parchment/80 mb-5 transition">
         <ChevronLeft size={16} /> Back
       </button>
+
+      {savedNotice && (
+        <div className="cf-panel rounded-xl px-4 py-3 mb-4 flex items-center justify-between gap-3 flex-wrap border-green-300/30" role="status">
+          <p className="text-sm text-parchment/80 flex items-center gap-2">
+            <Check size={15} className="text-green-400" /> Saved as &ldquo;{deck.savedName}&rdquo;. Find it any time under My decks.
+          </p>
+          <button onClick={openMyDecks} className="text-xs font-semibold cf-gold underline underline-offset-2">
+            Open My decks
+          </button>
+        </div>
+      )}
 
       <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-6">
         <div className="flex flex-wrap items-center gap-1.5 mb-4">
@@ -60,6 +97,11 @@ export default function ResultView({
           {deck.fromCollection && (
             <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-green-300/30 text-green-300/90">
               From your collection
+            </span>
+          )}
+          {deck.savedId && (
+            <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-white/15 text-parchment/60 truncate max-w-full">
+              Saved as {deck.savedName}
             </span>
           )}
         </div>
@@ -83,16 +125,12 @@ export default function ResultView({
           </div>
         </div>
 
-        <p className="text-sm text-parchment/70 leading-relaxed mt-4 pt-4 border-t border-white/10">
-          {describeDeck(deck)}
-        </p>
-
         {priceSource !== "none" && (
           <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
             <span className="text-xs text-parchment/50">
               Estimated deck total, commander included ({priceSource === "eur" ? "Cardmarket" : "TCGplayer"})
             </span>
-            {cardDataStatus === "loading" ? (
+            {cardDataStatus === "loading" || pricesRefreshing ? (
               <span className="flex items-center gap-1.5 text-xs text-parchment/50">
                 <Loader2 size={12} className="animate-spin" /> Fetching prices…
               </span>
@@ -106,14 +144,89 @@ export default function ResultView({
           </div>
         )}
 
-        {priceSource !== "none" && cardDataStatus === "done" && deck.budgetTarget != null && deckTotalPrice() != null && (
+        {priceSource !== "none" && priceSource === deck.budgetSource && cardDataStatus === "done" && deck.budgetTarget != null && deckTotalPrice() != null && (
           <p className={`text-xs mt-2 text-right ${deckTotalPrice() <= deck.budgetTarget ? "text-green-400/80" : "text-amber-400/80"}`}>
             {deckTotalPrice() <= deck.budgetTarget
               ? `Under your ${formatPrice(deck.budgetTarget, priceSource)} budget by ${formatPrice(deck.budgetTarget - deckTotalPrice(), priceSource)}`
-              : `${formatPrice(deckTotalPrice() - deck.budgetTarget, priceSource)} over your ${formatPrice(deck.budgetTarget, priceSource)} budget. ${(priceOf(deck.commander.name, cardData, priceSource) ?? 0) >= deck.budgetTarget ? "The commander alone costs more than that, so the rest was built as cheaply as possible." : "There weren't enough cheap cards that fit to fill every slot."}`}
+              : `${formatPrice(deckTotalPrice() - deck.budgetTarget, priceSource)} over your ${formatPrice(deck.budgetTarget, priceSource)} budget. ${(priceOf(deck.commander.name, cardData, priceSource) ?? 0) >= deck.budgetTarget ? "The commander alone costs more than that, so the rest was built as cheaply as possible." : deck.included?.length ? "Your must-include cards are kept whatever they cost." : "There weren't enough cheap cards that fit to fill every slot."}`}
           </p>
         )}
       </div>
+
+      <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-6 border-brass/30">
+        <p className="cf-eyebrow mb-2 flex items-center gap-1.5">
+          <Swords size={13} className="text-brass/80" /> How this deck plays
+        </p>
+        <h3 className="cf-display text-2xl text-parchment mb-2">{playstyleName(deck)}</h3>
+        <p className="text-base text-parchment/85 leading-relaxed">{strategyBlurb(deck)}</p>
+        <p className="text-xs text-parchment/50 leading-relaxed mt-3">{deckOverview(deck)}</p>
+      </div>
+
+      <div className="cf-panel rounded-xl p-4 mb-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-parchment/60 font-semibold mb-1.5 flex items-center gap-1.5">
+            Card images and prices from
+            {pricesRefreshing && <Loader2 size={12} className="animate-spin text-parchment/50" />}
+          </p>
+          <PriceSourcePicker compact priceSource={priceSource} setPriceSource={changePriceSource} />
+        </div>
+        <button
+          onClick={() => setEditing((v) => !v)}
+          aria-pressed={editing}
+          className={`shrink-0 sm:self-end py-2.5 px-4 text-sm ${editing ? "cf-btn-secondary" : "cf-btn-quiet"}`}
+        >
+          {editing ? <Check size={14} /> : <Pencil size={14} />} {editing ? "Done editing" : "Edit deck"}
+        </button>
+      </div>
+
+      {(deck.included?.length > 0 || deck.includeIssues?.length > 0 || deck.bannedCount > 0) && (
+        <div className="cf-panel rounded-xl p-4 mb-4">
+          <p className="text-xs text-parchment/60 leading-relaxed">
+            {[
+              deck.included?.length && `${deck.included.length} must-include card${deck.included.length === 1 ? "" : "s"} in the deck`,
+              deck.bannedCount && `${deck.bannedCount} banned card${deck.bannedCount === 1 ? "" : "s"} kept out`,
+            ].filter(Boolean).join(", ")}
+            {(deck.included?.length || deck.bannedCount) ? "." : ""}
+          </p>
+          {deck.includeIssues?.length > 0 && (
+            <>
+              <p className="text-xs text-amber-200/90 mt-2">Left out of your must-include list:</p>
+              <ul className="text-xs text-parchment/60 mt-1 space-y-0.5 list-disc pl-4">
+                {deck.includeIssues.map((issue) => <li key={issue.name}>{includeIssueText(issue, deck.commander.name)}</li>)}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
+      {(editing || size !== DECK_SIZE) && (
+        <div className={`cf-panel rounded-xl p-4 mb-4 ${size !== DECK_SIZE ? "border-amber-400/30" : ""}`}>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-parchment/80">
+              <span className={`cf-mono font-semibold ${size === DECK_SIZE ? "text-green-400/90" : "text-amber-300"}`}>{size}</span>
+              <span className="text-parchment/50"> of {DECK_SIZE} cards, plus your commander</span>
+            </p>
+            {size !== DECK_SIZE && (
+              <button onClick={evenOutDeck} className="text-xs font-semibold cf-gold underline underline-offset-2">
+                {size > DECK_SIZE ? `Cut ${size - DECK_SIZE} basic land${size - DECK_SIZE === 1 ? "" : "s"}` : `Add ${DECK_SIZE - size} basic land${DECK_SIZE - size === 1 ? "" : "s"}`}
+              </button>
+            )}
+          </div>
+          {size !== DECK_SIZE && (
+            <p className="text-xs text-parchment/50 mt-1.5 leading-relaxed">
+              {size > DECK_SIZE
+                ? "Cut a card for each one you've added, or let Brewhall take out basic lands."
+                : "Add a card for each one you've cut, or let Brewhall fill the gap with basic lands."}
+            </p>
+          )}
+          {editing && (
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <AddCardSearch identity={deck.commander.identity} inDeck={inDeck} onAdd={addSearchedCard} />
+              <p className="text-xs text-parchment/45 mt-3">Tap the × beside a card to cut it, or tap a card for swaps.</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {cardDataStatus === "done" && deck.fromCollection && (
         <div className="cf-panel rounded-xl p-4 mb-4">
@@ -168,8 +281,9 @@ export default function ResultView({
                     cardData={cardData}
                     priceSource={priceSource}
                     onPreview={(card) =>
-                      setPreviewCard(deck.alternatives?.[cat]?.length ? { ...card, swapRole: cat } : card)
+                      setPreviewCard({ ...card, inDeck: true, ...(deck.alternatives?.[cat]?.length ? { swapRole: cat } : {}) })
                     }
+                    onRemove={editing ? () => removeFromDeck(c.name) : null}
                   />
                 ))}
               </div>
@@ -195,7 +309,8 @@ export default function ResultView({
                 qty={l.qty}
                 cardData={cardData}
                 priceSource={priceSource}
-                onPreview={setPreviewCard}
+                onPreview={(card) => setPreviewCard({ ...card, inDeck: true })}
+                onRemove={editing ? () => removeFromDeck(l.name) : null}
               />
             ))}
           </div>
@@ -205,17 +320,68 @@ export default function ResultView({
       {deck.fromCollection && Object.keys(deck.suggestions || {}).length > 0 && (
         <div className="cf-panel-alt rounded-xl p-4 mb-6">
           <h3 className="cf-display text-lg text-parchment mb-1">Worth picking up</h3>
-          <p className="text-xs text-parchment/50 mb-3">Popular cards for this commander in the roles your collection is short on.</p>
+          <p className="text-xs text-parchment/50 mb-3">Popular cards for this commander in the roles your collection is short on. Add one to put it in the deck, then cut a card to make room.</p>
           {Object.entries(deck.suggestions).map(([cat, names]) => (
             <div key={cat} className="mb-2 last:mb-0">
               <p className="cf-eyebrow mb-1">{CAT_LABELS[cat]}</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
                 {names.map((name) => (
-                  <CardRow key={name} name={name} qty={1} cardData={cardData} priceSource={priceSource} onPreview={setPreviewCard} />
+                  <CardRow
+                    key={name}
+                    name={name}
+                    qty={1}
+                    cardData={cardData}
+                    priceSource={priceSource}
+                    onPreview={(card) => setPreviewCard({ ...card, addRole: cat })}
+                    onAdd={() => addToDeck(name, cat)}
+                  />
                 ))}
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {(!deck.fromCollection || !Object.keys(deck.suggestions || {}).length) && (
+        <div className="cf-panel-alt rounded-xl p-4 mb-6">
+          <h3 className="cf-display text-lg text-parchment mb-1 flex items-center gap-2">
+            <Lightbulb size={16} className="text-brass/70" /> Suggested additions
+          </h3>
+          <p className="text-xs text-parchment/50 mb-3">
+            {suggestedRoles.length
+              ? "The next-best cards for each job that didn't make the cut. Add one, then cut a card to make room, or tap a card in the deck to swap it straight over."
+              : "Cards real decks with this commander run that this one doesn't, from EDHREC."}
+          </p>
+          {suggestedRoles.map(([cat, names]) => (
+            <div key={cat} className="mb-2 last:mb-0">
+              <p className="cf-eyebrow mb-1">{CAT_LABELS[cat] || "Lands"}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
+                {names.slice(0, editing ? SUGGESTIONS_SHOWN_EDITING : SUGGESTIONS_SHOWN).map((name) => (
+                  <CardRow
+                    key={name}
+                    name={name}
+                    qty={1}
+                    cardData={cardData}
+                    priceSource={priceSource}
+                    onPreview={(card) => setPreviewCard({ ...card, addRole: cat })}
+                    onAdd={() => addToDeck(name, cat)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+          {!suggestedRoles.length && (
+            <button
+              onClick={loadSuggestedAdditions}
+              disabled={suggestionsStatus === "loading"}
+              className="cf-btn-quiet py-2.5 px-4 text-sm"
+            >
+              {suggestionsStatus === "loading" && <Loader2 size={14} className="animate-spin" />}
+              {suggestionsStatus === "loading" ? "Finding cards…" : "Find suggestions"}
+            </button>
+          )}
+          {suggestionsStatus === "error" && <p className="text-xs text-red-300/80 mt-2">Couldn&apos;t reach EDHREC or Scryfall. Try again in a moment.</p>}
+          {suggestionsStatus === "done" && !suggestedRoles.length && <p className="text-xs text-parchment/50 mt-2">This deck already has every popular card for its commander.</p>}
         </div>
       )}
 
@@ -234,7 +400,7 @@ export default function ResultView({
           }}
           className="flex-1 py-3.5 cf-btn-primary"
         >
-          <Save size={15} /> {session ? "Save deck" : "Sign in to save"}
+          <Save size={15} /> {!session ? "Sign in to save" : deck.savedId ? "Save changes" : "Save deck"}
         </button>
         <button
           onClick={reset}

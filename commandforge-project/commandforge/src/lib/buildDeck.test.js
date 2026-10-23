@@ -186,6 +186,37 @@ describe("buildDeck", () => {
     });
   });
 
+  describe("must-include and banned cards", () => {
+    const include = [
+      { name: "Pet Card", role: "synergy", data: { name: "Pet Card", priceUsd: "40.00" } },
+      { name: "Pet Land", role: "lands", data: { name: "Pet Land", priceUsd: "1.00" } },
+    ];
+
+    it("always runs must-include cards and never runs banned ones", async () => {
+      const first = await buildDeck(commander, "random", BRACKETS[2]);
+      const banned = [first.picks.ramp[0].name, first.picks.draw[1].name, first.nonbasics[1].name];
+      const deck = await buildDeck(commander, "random", BRACKETS[2], { include, exclude: banned });
+      const names = allCards(deck).map((c) => c.name);
+      expect(names).toContain("Pet Card");
+      expect(deck.nonbasics.map((l) => l.name)).toContain("Pet Land");
+      banned.forEach((n) => expect(names).not.toContain(n));
+      // Nor are they offered as swaps.
+      banned.forEach((n) => expect(Object.values(deck.alternatives).flat()).not.toContain(n));
+      expect(allCards(deck).reduce((s, c) => s + c.qty, 0)).toBe(99);
+      expect(new Set(names).size).toBe(names.length);
+    });
+
+    it("keeps must-include cards and the budget", async () => {
+      const budget = 150;
+      const deck = await buildDeck(commander, "random", BRACKETS[2], {
+        budget, priceSource: "usd", include, exclude: [],
+      });
+      expect(allCards(deck).map((c) => c.name)).toEqual(expect.arrayContaining(["Pet Card", "Pet Land"]));
+      expect(deckCost(deck) + 5).toBeLessThanOrEqual(budget);
+      expect(allCards(deck).reduce((s, c) => s + c.qty, 0)).toBe(99);
+    });
+  });
+
   it("reports a network problem instead of returning an empty deck", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })));
     await expect(buildDeck(commander, "random", BRACKETS[0])).rejects.toThrow(/no data/);

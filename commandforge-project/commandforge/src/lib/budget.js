@@ -228,8 +228,8 @@ export function upgradeWithinBudget(picks, categoryCards, usedNames, cardData, p
    in its role that `allowed` accepts, choosing the smallest swap that gets
    under (or the biggest saving if none does alone). `picks` maps roles to
    cards; `poolFor(role)` lists a role's candidates. Guaranteed staples like
-   Sol Ring stay. Returns the new picks. */
-export function trimToBudget({ picks, poolFor, limit, cardData, priceSource, allowed = () => true }) {
+   Sol Ring stay, as do cards named in `keep`. Returns the new picks. */
+export function trimToBudget({ picks, poolFor, limit, cardData, priceSource, allowed = () => true, keep = new Set() }) {
   const priceFor = (c) => priceOf(c.name, cardData, priceSource) ?? 0;
   const next = Object.fromEntries(Object.entries(picks).map(([role, cards]) => [role, [...cards]]));
   const inDeck = new Set(Object.values(next).flat().map((c) => c.name.toLowerCase()));
@@ -243,7 +243,7 @@ export function trimToBudget({ picks, poolFor, limit, cardData, priceSource, all
         .find((c) => !inDeck.has(c.name.toLowerCase()) && priceOf(c.name, cardData, priceSource) != null && allowed(c));
       if (!cheapest) return;
       cards.forEach((card, i) => {
-        if (staples.has(card.name.toLowerCase())) return;
+        if (staples.has(card.name.toLowerCase()) || keep.has(card.name.toLowerCase())) return;
         const saving = priceFor(card) - priceFor(cheapest);
         if (saving > 0) options.push({ saving, role, i, card, swapIn: cheapest });
       });

@@ -1,5 +1,5 @@
 import { houseNameForColors } from "./colors";
-import { normalizeThemeKey } from "./queries";
+import { normalizeThemeKey, THEME_SUGGESTIONS } from "./queries";
 
 // One-sentence gameplan for each curated archetype, used as the second
 // sentence of the deck description. Free-typed themes that don't match one
@@ -25,10 +25,19 @@ export function strategyBlurb(deck) {
   return "It plays a flexible, value-driven game — developing its board, answering threats, and grinding out card advantage along the way.";
 }
 
-// A short, two-sentence summary of what kind of deck just got built and
-// roughly how it plays, shown at the top of the result screen.
-export function describeDeck(deck) {
-  if (!deck) return "";
+// A short name for how the deck plays, for the heading of the result
+// screen's playstyle box: the theme or archetype as the theme chips spell
+// it, or the typed theme.
+export function playstyleName(deck) {
+  const key = deck.theme ? normalizeThemeKey(deck.theme) : deck.commander.archetype;
+  const chip = key && THEME_SUGGESTIONS.find((s) => normalizeThemeKey(s) === key);
+  if (chip) return chip;
+  const named = deck.theme?.trim() || key;
+  return named ? named.replace(/^./, (c) => c.toUpperCase()) : "Midrange value";
+}
+
+// What kind of deck got built: style, commander, bracket and colours.
+export function deckOverview(deck) {
   const styleText = deck.fromCollection
     ? `${deck.style === "edhrec" ? "An EDHREC-inspired" : "A"} build from your own collection`
     : deck.style === "edhrec" ? "An EDHREC-inspired build" : "A randomly assembled build";
@@ -36,6 +45,12 @@ export function describeDeck(deck) {
   const colorsText = deck.commander.identity.length
     ? ` in ${houseNameForColors(deck.commander.identity)} colors`
     : " with no color identity";
-  const overview = `${styleText} around ${deck.commander.name}${themeText}, aimed at Bracket ${deck.bracket.id} (${deck.bracket.name}) power level${colorsText}.`;
-  return `${overview} ${strategyBlurb(deck)}`;
+  return `${styleText} around ${deck.commander.name}${themeText}, aimed at Bracket ${deck.bracket.id} (${deck.bracket.name}) power level${colorsText}.`;
+}
+
+// A short, two-sentence summary of what kind of deck just got built and
+// roughly how it plays.
+export function describeDeck(deck) {
+  if (!deck) return "";
+  return `${deckOverview(deck)} ${strategyBlurb(deck)}`;
 }

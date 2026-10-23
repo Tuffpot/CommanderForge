@@ -92,18 +92,34 @@ export async function fetchFixingLands(identity, priceSource) {
   return lands;
 }
 
-// Looks up the cheapest priced printing of each named card, a few dozen names
-// per search so a whole deck's stragglers cost one or two requests.
-export async function fetchCheapestPrintings(names, priceSource) {
+// Scryfall's full card data for each named card, cheapest priced printing
+// first, a few dozen names per search so a whole deck's stragglers cost one
+// or two requests.
+export async function fetchCardsByName(names, priceSource = "none") {
   const unique = [...new Set(names)];
-  const result = {};
+  const cards = [];
   for (let i = 0; i < unique.length; i += 20) {
     const chunk = unique.slice(i, i + 20);
     const query = `(${chunk.map((n) => `!"${n.replace(/"/g, "")}"`).join(" or ")})`;
-    const cards = await scryfallSearchCards(query, priceSource);
-    cards.map(mapScryfallCard).forEach((c) => { result[c.name.toLowerCase()] = c; });
+    cards.push(...(await scryfallSearchCards(query, priceSource)));
   }
+  return cards;
+}
+
+// Looks up the cheapest priced printing of each named card.
+export async function fetchCheapestPrintings(names, priceSource) {
+  const result = {};
+  (await fetchCardsByName(names, priceSource)).map(mapScryfallCard).forEach((c) => { result[c.name.toLowerCase()] = c; });
   return result;
+}
+
+// Cards matching typed text that a deck with this colour identity can run,
+// most played first, for adding a card by hand. Returns Scryfall's full data.
+export async function searchAddableCards(text, identity) {
+  const words = text.trim().replace(/"/g, "");
+  if (words.length < 2) return [];
+  const cards = await scryfallSearchCards(`f:commander id<=${identity.join("").toLowerCase() || "c"} name:"${words}"`);
+  return cards.slice(0, 12);
 }
 
 /* ---------------------------------------------------------

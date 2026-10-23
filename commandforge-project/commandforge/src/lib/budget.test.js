@@ -162,4 +162,16 @@ describe("trimToBudget", () => {
     expect(run(picks, 100)).toEqual(picks);
     expect(run(picks, 1, (c) => c.name !== "Cheaper Spell").ramp[0].name).toBe("Cheap Spell");
   });
+
+  it("never swaps out a card named in keep", () => {
+    const next = trimToBudget({
+      picks: { ramp: [card("Big Spell"), card("Mid Spell")] },
+      poolFor: (role) => pools[role],
+      limit: 21,
+      cardData,
+      priceSource: "usd",
+      keep: new Set(["big spell"]),
+    });
+    expect(next.ramp.map((c) => c.name)).toEqual(["Big Spell", "Cheaper Spell"]);
+  });
 });

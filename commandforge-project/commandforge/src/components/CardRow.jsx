@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { ImageOff } from "lucide-react";
+import { ImageOff, Plus, X } from "lucide-react";
 import { formatPrice } from "../lib/budget";
 
-export default function CardRow({ name, qty, cardData, priceSource, onPreview, missing = false }) {
+// `onRemove` or `onAdd` put a button beside the row to cut the card from
+// the deck, or add it.
+export default function CardRow({ name, qty, cardData, priceSource, onPreview, missing = false, onRemove = null, onAdd = null }) {
   const [hover, setHover] = useState(false);
   const [rect, setRect] = useState(null);
   const rowRef = useRef(null);
@@ -45,7 +47,7 @@ export default function CardRow({ name, qty, cardData, priceSource, onPreview, m
     if (left < 8) left = 8;
   }
 
-  return (
+  const row = (
     <button
       ref={rowRef}
       onClick={() => onPreview({ name, ...(data || {}) })}
@@ -58,7 +60,7 @@ export default function CardRow({ name, qty, cardData, priceSource, onPreview, m
         setHover(true);
       }}
       onPointerLeave={() => setHover(false)}
-      className={`w-full flex items-center gap-2.5 text-left rounded-lg -mx-1 px-1 py-1 transition ${
+      className={`${onRemove || onAdd ? "flex-1 min-w-0" : "w-full"} flex items-center gap-2.5 text-left rounded-lg -mx-1 px-1 py-1 transition ${
         showThumb ? "hover:bg-white/5 cursor-pointer" : "cursor-default"
       }`}
     >
@@ -96,5 +98,31 @@ export default function CardRow({ name, qty, cardData, priceSource, onPreview, m
           document.body
         )}
     </button>
+  );
+
+  if (!onRemove && !onAdd) return row;
+  return (
+    <div className="flex items-center gap-1">
+      {row}
+      {onAdd ? (
+        <button
+          onClick={onAdd}
+          aria-label={`Add ${name} to the deck`}
+          title="Add to the deck"
+          className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-full border border-brass/40 text-[11px] font-semibold text-brass hover:border-brass hover:text-parchment transition"
+        >
+          <Plus size={12} /> Add
+        </button>
+      ) : (
+        <button
+          onClick={onRemove}
+          aria-label={`Cut ${qty > 1 ? `one ${name}` : name} from the deck`}
+          title="Cut from the deck"
+          className="shrink-0 p-1.5 -mr-1.5 rounded-full text-parchment/35 hover:text-red-300 hover:bg-white/5 transition"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
   );
 }

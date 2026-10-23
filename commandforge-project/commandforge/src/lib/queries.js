@@ -232,11 +232,33 @@ export function nonbasicTarget(identity, bracket) {
 }
 
 // Keeps a land only if it really fixes for this deck: it makes at least two
-// of the deck's colours, or it fetches a basic type the deck plays.
+// of the deck's colours, or it fetches any basic or two basic types the deck
+// plays. A fetch that finds only one of the deck's types (Flooded Strand in a
+// blue-red deck) is little better than that basic, so it doesn't count.
 export function fixesFor(card, identity) {
   const made = (card.produced_mana || []).filter((c) => identity.includes(c));
   if (made.length >= 2) return true;
   if ((card.produced_mana || []).length) return false;
   const text = (card.oracle_text || card.card_faces?.map((f) => f.oracle_text).join("\n") || "").toLowerCase();
-  return text.includes("basic land") || identity.some((c) => text.includes(BASIC_LAND[c].toLowerCase()));
+  if (text.includes("basic land")) return true;
+  const types = identity.filter((c) => text.includes(BASIC_LAND[c].toLowerCase()));
+  return types.length >= Math.min(2, identity.length);
+}
+
+/* Lands that sacrifice themselves to find another: the true fetches,
+   Prismatic Vista, Evolving Wilds and the like. Fetches are among the most
+   played lands, so left alone they crowded the dual lands out of every
+   mana base. They thin the deck and turn on landfall, so a deck still runs
+   a couple, and the rest of the slots go to lands that make two colours. */
+export const FETCH_LAND_LIMIT = 2;
+
+export function isFetchLand(card) {
+  const text = (card.oracleText || card.oracle_text || "").toLowerCase();
+  return text.includes("sacrifice") && /search your library for an? [^.]*(land|plains|island|swamp|mountain|forest)/.test(text);
+}
+
+// Keeps the first FETCH_LAND_LIMIT fetches in a list of lands, in order.
+export function limitFetchLands(lands, limit = FETCH_LAND_LIMIT) {
+  let left = limit;
+  return lands.filter((land) => !isFetchLand(land) || left-- > 0);
 }

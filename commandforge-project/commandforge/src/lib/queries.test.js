@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   guessArchetype, buildNameQuery, filterAndSortByName, buildColorQuery, normalizeThemeKey,
-  singularType, resolveThemeQuery, categoryQuery, nonbasicTarget, fixesFor, ARCHETYPE_QUERIES,
+  singularType, resolveThemeQuery, categoryQuery, nonbasicTarget, fixesFor, isFetchLand, limitFetchLands, ARCHETYPE_QUERIES,
 } from "./queries";
 
 describe("guessArchetype", () => {
@@ -116,8 +116,31 @@ describe("fixesFor", () => {
     expect(fixesFor({ produced_mana: ["U", "W"] }, ["U", "R"])).toBe(false);
   });
 
-  it("keeps fetch lands that find a basic type the deck plays", () => {
+  it("keeps fetch lands that find two of the deck's basic types, or any basic", () => {
     expect(fixesFor({ oracle_text: "Search your library for a Mountain or Forest card" }, ["R", "G"])).toBe(true);
+    expect(fixesFor({ oracle_text: "Search your library for a basic land card" }, ["R", "G"])).toBe(true);
     expect(fixesFor({ oracle_text: "Search your library for a Plains card" }, ["R", "G"])).toBe(false);
+  });
+
+  it("leaves out fetch lands that find only one of the deck's types", () => {
+    expect(fixesFor({ oracle_text: "Search your library for a Mountain or Forest card" }, ["U", "R"])).toBe(false);
+  });
+});
+
+describe("fetch lands", () => {
+  const strand = { name: "Flooded Strand", oracleText: "{T}, Pay 1 life, Sacrifice Flooded Strand: Search your library for a Plains or Island card, put it onto the battlefield, then shuffle." };
+  const vista = { name: "Prismatic Vista", oracleText: "{T}, Pay 1 life, Sacrifice Prismatic Vista: Search your library for a basic land card, put it onto the battlefield, then shuffle." };
+  const wilds = { name: "Evolving Wilds", oracle_text: "{T}, Sacrifice Evolving Wilds: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle." };
+  const shock = { name: "Hallowed Fountain", oracleText: "({T}: Add {W} or {U}.) As Hallowed Fountain enters, you may pay 2 life." };
+  const tower = { name: "Command Tower", oracleText: "{T}: Add one mana of any color in your commander's color identity." };
+
+  it("spots lands that sacrifice themselves to find another", () => {
+    expect([strand, vista, wilds].every(isFetchLand)).toBe(true);
+    expect([shock, tower].some(isFetchLand)).toBe(false);
+  });
+
+  it("keeps only the first two fetches and every other land", () => {
+    expect(limitFetchLands([strand, shock, vista, tower, wilds]).map((l) => l.name))
+      .toEqual(["Flooded Strand", "Hallowed Fountain", "Prismatic Vista", "Command Tower"]);
   });
 });

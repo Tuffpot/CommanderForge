@@ -9,6 +9,7 @@ export function mapScryfallCardToCommander(card) {
     identity: card.color_identity || [],
     archetype: guessArchetype(oracleText),
     blurb: typeLine || "Legendary creature",
+    gameChanger: Boolean(card.game_changer),
     imageSmall: faceImages?.small || null,
     imageLarge: faceImages?.large || faceImages?.png || null,
     priceUsd: card.prices?.usd || card.prices?.usd_foil || null,
@@ -68,6 +69,7 @@ export function mapScryfallCard(card) {
     // For the mana curve and card-type breakdown on the result screen.
     cmc: typeof card.cmc === "number" ? card.cmc : null,
     typeLine: card.card_faces?.[0]?.type_line || card.type_line || "",
+    gameChanger: Boolean(card.game_changer),
   };
 }
 

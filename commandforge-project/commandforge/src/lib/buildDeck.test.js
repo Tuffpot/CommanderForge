@@ -85,6 +85,35 @@ describe("buildDeck", () => {
     });
   });
 
+  describe("Game Changers", () => {
+    // Flags the priciest few cards in every pool, lands included, as Game
+    // Changers, and makes the Game Changer search fail so the flags are used.
+    beforeEach(() => {
+      const scryfall = fakeScryfall();
+      vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+        if (url.includes("gamechanger")) return { ok: false, status: 500, json: async () => ({}) };
+        const res = await scryfall(url, init);
+        const json = await res.json();
+        (json.data || []).forEach((c) => { c.game_changer = parseFloat(c.prices?.usd) >= 29; });
+        return { ...res, json: async () => json };
+      }));
+    });
+    const gameChangersIn = (deck) => deck.bracketCheck.gameChangers;
+
+    it("runs up to three in bracket 3 when they're among the best picks", async () => {
+      // With prices on and no budget, the priciest cards are picked first.
+      const deck = await buildDeck(commander, "random", BRACKETS[2], { priceSource: "usd" });
+      expect(gameChangersIn(deck)).toHaveLength(3);
+      expect(allCards(deck).reduce((s, c) => s + c.qty, 0)).toBe(99);
+    });
+
+    it("runs none in bracket 2", async () => {
+      const deck = await buildDeck(commander, "random", BRACKETS[1], { priceSource: "usd" });
+      expect(gameChangersIn(deck)).toHaveLength(0);
+      expect(allCards(deck).reduce((s, c) => s + c.qty, 0)).toBe(99);
+    });
+  });
+
   it("reports a network problem instead of returning an empty deck", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })));
     await expect(buildDeck(commander, "random", BRACKETS[0])).rejects.toThrow(/no data/);

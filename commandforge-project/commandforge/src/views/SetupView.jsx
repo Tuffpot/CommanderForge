@@ -20,8 +20,8 @@ function Step({ n, title, hint }) {
 
 const HOW_IT_WORKS = [
   {
-    title: "Always legal",
-    body: "Every card fits your commander's colour identity and the Commander ban list, so the 99 you get is one you can actually sit down and play.",
+    title: "Legal, and true to its bracket",
+    body: "Every card fits your commander's colour identity and the ban list, and each deck follows the official bracket rules on Game Changers, land denial, extra turns and two-card combos.",
   },
   {
     title: "Tuned to your table",
@@ -224,7 +224,7 @@ export default function SetupView({
       </div>
 
       <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-5">
-        <Step n={2} title="Pick a power bracket" hint="How hard the deck hits. Ramp, removal and win conditions scale with it." />
+        <Step n={2} title="Pick a power bracket" hint="Follows the official bracket rules, and sets how much ramp, removal and win conditions the deck runs." />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {BRACKETS.map((b) => (
             <button

@@ -4,6 +4,7 @@ import AdSlot from "../components/AdSlot";
 import CardRow from "../components/CardRow";
 import ExportButtons from "../components/ExportButtons";
 import ColorPips from "../components/ColorPips";
+import BracketCheck from "../components/BracketCheck";
 import DeckStats from "../components/DeckStats";
 import { formatPrice, priceOf } from "../lib/budget";
 import { CAT_LABELS } from "../lib/buildDeck";
@@ -149,6 +150,7 @@ export default function ResultView({
         </div>
       )}
 
+      {cardDataStatus === "done" && <BracketCheck bracket={deck.bracket} check={deck.bracketCheck} />}
       {cardDataStatus === "done" && <DeckStats picks={deck.picks} cardData={cardData} />}
 
       <div className="space-y-3 mb-6">

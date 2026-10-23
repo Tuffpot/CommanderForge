@@ -2,6 +2,7 @@ import { BASIC_LAND } from "./colors";
 import { categoryQuery, nonbasicTarget, fixesFor, fetchLandLimit, limitFetchLands } from "./queries";
 import { scryfallSearchCards, mapScryfallCard, fetchScryfallData } from "./scryfall";
 import { popularityWeightedShuffle } from "./budget";
+import { dropIrrelevant } from "./relevance";
 import { NONLAND_TARGET, LAND_TARGET, checkCombos, summariseBracket } from "./buildDeck";
 import { applyBracketLimits, bracketLimits, fetchGameChangers } from "./bracketRules";
 import {
@@ -91,6 +92,17 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
     if (nonlandCount() >= NONLAND_TARGET) break;
     if (!usedNames.has(card.name.toLowerCase())) take("utility", card);
   }
+
+  // Swap out payoffs the deck can't use, like Mystic Forge in a deck with a
+  // handful of artifacts, for another owned spell.
+  const relevant = dropIrrelevant(picks, commander, cardData, () =>
+    spells.filter((c) => !usedNames.has(c.name.toLowerCase())).map((c) => ({ name: c.name }))
+  );
+  relevant.swaps.forEach(({ from, to }) => {
+    usedNames.delete(from.name.toLowerCase());
+    usedNames.add(to.name.toLowerCase());
+  });
+  Object.assign(picks, relevant.picks);
 
   // Lands: fixing first in a multicolour deck, then the most played of the
   // rest, leaving room for a couple of basics of each colour.

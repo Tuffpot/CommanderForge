@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   priceOf, cheapestFirst, perCardCap, pickWithinBudget, upgradeWithinBudget,
-  formatPrice, UNKNOWN_PRICE_ESTIMATE, MAX_BUDGET_SHARE,
+  formatPrice, trimToBudget, UNKNOWN_PRICE_ESTIMATE, MAX_BUDGET_SHARE,
 } from "./budget";
 
 const card = (name) => ({ name });
@@ -127,5 +127,39 @@ describe("formatPrice", () => {
   it("shows a dash for missing or unreadable prices", () => {
     expect(formatPrice(null, "usd")).toBe("—");
     expect(formatPrice("abc", "usd")).toBe("—");
+  });
+});
+
+describe("trimToBudget", () => {
+  const cardData = Object.fromEntries(
+    [["Sol Ring", 2], ["Big Spell", 20], ["Mid Spell", 5.03], ["Cheap Spell", 0.5], ["Cheaper Spell", 0.25], ["Shock", 12], ["Gate", 0.2]]
+      .map(([name, usd]) => [name.toLowerCase(), { name, priceUsd: String(usd) }])
+  );
+  const card = (name) => ({ name });
+  const pools = {
+    ramp: [card("Sol Ring"), card("Big Spell"), card("Mid Spell"), card("Cheap Spell"), card("Cheaper Spell")],
+    lands: [card("Shock"), card("Gate")],
+  };
+  const run = (picks, limit, allowed) =>
+    trimToBudget({ picks, poolFor: (role) => pools[role], limit, cardData, priceSource: "usd", allowed });
+
+  it("makes the smallest swap that gets a few pence over back under", () => {
+    // 2 + 20 + 5.03 = 27.03, so 3p over a 27 budget.
+    const next = run({ ramp: [card("Sol Ring"), card("Big Spell"), card("Mid Spell")] }, 27);
+    expect(next.ramp.map((c) => c.name)).toEqual(["Sol Ring", "Big Spell", "Cheaper Spell"]);
+  });
+
+  it("keeps going until the deck fits, swapping lands too, and never drops Sol Ring", () => {
+    const next = run({ ramp: [card("Sol Ring"), card("Big Spell")], lands: [card("Shock")] }, 5);
+    expect(next.ramp[0].name).toBe("Sol Ring");
+    expect(next.lands.map((c) => c.name)).toEqual(["Gate"]);
+    const total = [...next.ramp, ...next.lands].reduce((s, c) => s + parseFloat(cardData[c.name.toLowerCase()].priceUsd), 0);
+    expect(total).toBeLessThanOrEqual(5);
+  });
+
+  it("leaves a deck that already fits alone, and skips cards that aren't allowed", () => {
+    const picks = { ramp: [card("Big Spell")] };
+    expect(run(picks, 100)).toEqual(picks);
+    expect(run(picks, 1, (c) => c.name !== "Cheaper Spell").ramp[0].name).toBe("Cheap Spell");
   });
 });

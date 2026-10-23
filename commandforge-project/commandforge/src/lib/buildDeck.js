@@ -3,8 +3,9 @@ import { categoryQuery, fetchLandLimit, limitFetchLands, nonbasicTarget } from "
 import { scryfallSearchCards, mapScryfallCard, fetchFixingLands, fetchCheapestPrintings, fetchScryfallData } from "./scryfall";
 import {
   priceOf, UNKNOWN_PRICE_ESTIMATE, cheapestFirst, spend, orderCandidates,
-  pickWithinBudget, AUTO_INCLUDES, pullStaples, upgradeWithinBudget,
+  pickWithinBudget, AUTO_INCLUDES, pullStaples, upgradeWithinBudget, trimToBudget,
 } from "./budget";
+import { dropIrrelevant } from "./relevance";
 import { applyBracketLimits, bracketLimits, breakCombos, capPicks, fetchGameChangers, findTwoCardCombos, isExtraTurn } from "./bracketRules";
 
 export const BRACKETS = [
@@ -187,25 +188,33 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   // cards instead of leaving it unspent.
   upgradeWithinBudget(picks, categoryCards, usedNames, cardData, priceSource, budgetState);
 
-  // Then hold the deck to its Game Changer and extra-turn allowance. A card
-  // over the limit is swapped for the next one in its role, and under a
-  // budget only for one that costs no more.
-  const capped = capPicks({ lands: nonbasicsChosen, ...picks }, limits, gameChangers, {
-    gameChangersUsed,
-    replacementsFor: (role, card) => {
-      const pool = role === "lands" ? nonbasicPool : categoryCards[role];
-      if (!budgetActive) return pool;
-      const ceiling = priceFor(card);
-      return [...pool.filter((c) => priceFor(c) <= ceiling), ...cheapestFirst(pool, cardData, priceSource)];
-    },
-  });
-  capped.swaps.forEach(({ from, to }) => {
+  // Replacements for a card swapped out after picking: the next in its role,
+  // and under a budget one that costs no more where there is one.
+  const replacementsFor = (role, card) => {
+    const pool = (role === "lands" ? nonbasicPool : categoryCards[role]) || [];
+    if (!budgetActive) return pool;
+    const ceiling = priceFor(card);
+    return [...pool.filter((c) => priceFor(c) <= ceiling), ...cheapestFirst(pool, cardData, priceSource)];
+  };
+  const noteSwaps = (swaps) => swaps.forEach(({ from, to }) => {
     usedNames.delete(from.name.toLowerCase());
     if (to) usedNames.add(to.name.toLowerCase());
     if (budgetActive) budgetState.remaining += priceFor(from) - (to ? priceFor(to) : 0);
   });
+
+  // Then hold the deck to its Game Changer and extra-turn allowance.
+  const capped = capPicks({ lands: nonbasicsChosen, ...picks }, limits, gameChangers, { gameChangersUsed, replacementsFor });
+  noteSwaps(capped.swaps);
   const { lands: cappedLands, ...cappedPicks } = capped.picks;
   Object.assign(picks, cappedPicks);
+
+  // And swap out payoffs the deck can't use, like Mystic Forge in a deck
+  // with a handful of artifacts.
+  const uncapped = (c) => !gameChangers.has(c.name.toLowerCase()) && !isExtraTurn(c);
+  const relevant = dropIrrelevant(picks, commander, cardData, replacementsFor, uncapped);
+  noteSwaps(relevant.swaps);
+  Object.assign(picks, relevant.picks);
+  const fitsDeck = (c) => uncapped(c) && relevant.fits(cardData[c.name.toLowerCase()] || c);
   nonlandTotal = Object.values(picks).reduce((s, l) => s + l.length, 0);
 
   const deficit = NONLAND_TARGET - nonlandTotal;
@@ -246,12 +255,28 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   }
 
   // Brackets 1 to 3 allow no two-card combos: swap a card out of any the
-  // deck ended up with.
-  // Replacements skip capped cards so a swap can't push the deck over.
+  // deck ended up with. Replacements skip capped and off-theme cards.
   const comboCheck = await checkCombos(limits, commander, picks, nonbasics, (cat) =>
-    categoryCards[cat].filter((c) => !gameChangers.has(c.name.toLowerCase()) && !isExtraTurn(c)).map((c) => c.name)
+    categoryCards[cat].filter(fitsDeck).map((c) => c.name)
   );
   Object.assign(picks, comboCheck.picks);
+
+  // Prices settle only now (guessed prices filled in, swaps made), so make
+  // sure the deck still fits the budget, down to the penny.
+  // A commander that costs more than the whole budget already means the
+  // cheapest build, so there's nothing left to trim.
+  if (budgetActive && commanderPrice < budget) {
+    const { lands, ...trimmed } = trimToBudget({
+      picks: { lands: nonbasics, ...picks },
+      poolFor: (role) => (role === "lands" ? nonbasicPool : categoryCards[role]) || [],
+      limit: deckBudget,
+      cardData,
+      priceSource,
+      allowed: fitsDeck,
+    });
+    Object.assign(picks, trimmed);
+    nonbasics.splice(0, nonbasics.length, ...lands.map((l) => ({ name: l.name, qty: 1 })));
+  }
 
   // The next-best cards for each role that didn't make the deck, so the
   // result screen can offer a swap.

@@ -73,6 +73,27 @@ describe("buildDeck", () => {
     expect(deckCost(deck) + 5).toBeGreaterThan(budget * 0.8);
   });
 
+  it("stays within the budget when guessed prices turn out higher", async () => {
+    // Every tenth card comes back from the search unpriced, so it's budgeted
+    // at a guess, and the later price lookup says it costs $9.99.
+    const scryfall = fakeScryfall();
+    vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+      const q = url.includes("/cards/search") ? decodeURIComponent(new URL(url).searchParams.get("q")) : "";
+      if (q.startsWith("(!")) {
+        const names = [...q.matchAll(/!"([^"]+)"/g)].map((m) => m[1]);
+        return { ok: true, status: 200, json: async () => ({ data: names.map((name) => ({ name, prices: { usd: "9.99" } })) }) };
+      }
+      const res = await scryfall(url, init);
+      const json = await res.json();
+      (json.data || []).forEach((c, i) => { if (i % 10 === 3 && !url.includes("/cards/collection")) c.prices = { usd: null, eur: null }; });
+      return { ...res, json: async () => json };
+    }));
+    const budget = 120;
+    const deck = await buildDeck(commander, "random", BRACKETS[2], { budget, priceSource: "usd" });
+    expect(deckCost(deck) + 5).toBeLessThanOrEqual(budget);
+    expect(allCards(deck).reduce((s, c) => s + c.qty, 0)).toBe(99);
+  });
+
   it("builds the cheapest possible deck when the commander alone costs more than the budget", async () => {
     const pricey = { ...commander, priceUsd: "500.00" };
     const deck = await buildDeck(pricey, "random", BRACKETS[2], { budget: 100, priceSource: "usd" });

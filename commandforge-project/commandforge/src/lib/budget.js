@@ -221,6 +221,49 @@ export function upgradeWithinBudget(picks, categoryCards, usedNames, cardData, p
   }
 }
 
+/* The last word on the budget. Prices can still move after picking (a card
+   budgeted at a guess turns out dearer, or a combo or bracket swap brings
+   in a different card), which left some decks a few pence over. While the
+   deck is over `limit`, this swaps a card for the cheapest priced card left
+   in its role that `allowed` accepts, choosing the smallest swap that gets
+   under (or the biggest saving if none does alone). `picks` maps roles to
+   cards; `poolFor(role)` lists a role's candidates. Guaranteed staples like
+   Sol Ring stay. Returns the new picks. */
+export function trimToBudget({ picks, poolFor, limit, cardData, priceSource, allowed = () => true }) {
+  const priceFor = (c) => priceOf(c.name, cardData, priceSource) ?? 0;
+  const next = Object.fromEntries(Object.entries(picks).map(([role, cards]) => [role, [...cards]]));
+  const inDeck = new Set(Object.values(next).flat().map((c) => c.name.toLowerCase()));
+  const staples = new Set(Object.values(AUTO_INCLUDES).flat().map((n) => n.toLowerCase()));
+  let total = Object.values(next).flat().reduce((s, c) => s + priceFor(c), 0);
+
+  for (let guard = 0; total > limit + 1e-9 && guard < 120; guard++) {
+    const options = [];
+    Object.entries(next).forEach(([role, cards]) => {
+      const cheapest = cheapestFirst(poolFor(role), cardData, priceSource)
+        .find((c) => !inDeck.has(c.name.toLowerCase()) && priceOf(c.name, cardData, priceSource) != null && allowed(c));
+      if (!cheapest) return;
+      cards.forEach((card, i) => {
+        if (staples.has(card.name.toLowerCase())) return;
+        const saving = priceFor(card) - priceFor(cheapest);
+        if (saving > 0) options.push({ saving, role, i, card, swapIn: cheapest });
+      });
+    });
+    if (!options.length) break;
+    // The smallest swap that gets the deck under, so a few pence over
+    // doesn't cost its best card; failing that, the biggest saving.
+    const over = total - limit;
+    const enough = options.filter((o) => o.saving >= over);
+    const best = enough.length
+      ? enough.reduce((a, b) => (b.saving < a.saving ? b : a))
+      : options.reduce((a, b) => (b.saving > a.saving ? b : a));
+    next[best.role][best.i] = best.swapIn;
+    inDeck.delete(best.card.name.toLowerCase());
+    inDeck.add(best.swapIn.name.toLowerCase());
+    total -= best.saving;
+  }
+  return next;
+}
+
 export function formatPrice(value, source) {
   if (value == null) return "—";
   const n = parseFloat(value);

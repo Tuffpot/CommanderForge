@@ -1,10 +1,12 @@
 import { Library, Lightbulb, Loader2, Search, Shuffle } from "lucide-react";
 import ColorPips from "../components/ColorPips";
 import Star from "../components/Star";
+import PriceSourcePicker from "../components/PriceSourcePicker";
 import { formatPrice } from "../lib/budget";
 import { BRACKETS } from "../lib/buildDeck";
 import { COLOR_META, houseNameForColors } from "../lib/colors";
 import { THEME_SUGGESTIONS } from "../lib/queries";
+import { parseNameList } from "../lib/cardLists";
 
 function Step({ n, title, hint }) {
   return (
@@ -36,6 +38,8 @@ const HOW_IT_WORKS = [
 export default function SetupView({
   bracket,
   budgetInput,
+  cardLists,
+  setCardLists,
   collectionCount,
   collectionStatus,
   colorFilter,
@@ -74,6 +78,8 @@ export default function SetupView({
   useCollection,
 }) {
   const searchingOwned = useCollection && ownedOnly;
+  const includeCount = parseNameList(cardLists.include).length;
+  const excludeCount = parseNameList(cardLists.exclude).length;
   const collectionReady = collectionStatus === "ready" && collectionCount > 0;
   // Switching what the search looks through drops a commander picked from
   // the other list.
@@ -260,24 +266,9 @@ export default function SetupView({
         </button>
       </div>
 
-      <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-6">
-        <Step n={4} title="Card images and prices" hint="Optional. Turn on a price source to see card images, prices and a deck total." />
-        <div className="flex flex-col sm:flex-row gap-2">
-          {[
-            { id: "none", label: "No prices" },
-            { id: "usd", label: "TCGplayer ($)" },
-            { id: "eur", label: "Cardmarket (€)" },
-          ].map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => setPriceSource(opt.id)}
-              aria-pressed={priceSource === opt.id}
-              className="cf-choice flex-1 py-2.5 text-sm font-semibold text-parchment/80"
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+      <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-5">
+        <Step n={4} title="Card images and prices" hint="Optional. Turn on a price source to see card images, prices and a deck total. You can switch it after brewing too." />
+        <PriceSourcePicker priceSource={priceSource} setPriceSource={setPriceSource} />
         {priceSource !== "none" && (
           <p className="text-xs text-parchment/45 mt-3 leading-relaxed">
             Images and prices come live from Scryfall, which gets dollar prices from TCGplayer and euro prices from Cardmarket.
@@ -314,6 +305,47 @@ export default function SetupView({
             </p>
           </div>
         )}
+      </div>
+
+      <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-6">
+        <Step
+          n={5}
+          title="Must-include and banned cards"
+          hint="Optional. One card per line, or paste a list. Used for random commanders too, and kept on this device for your next brew."
+        />
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="cf-include" className="flex items-baseline justify-between text-xs text-parchment/60 font-semibold mb-1.5">
+              Always include
+              {includeCount > 0 && <span className="cf-mono font-normal text-brass/70">{includeCount}</span>}
+            </label>
+            <textarea
+              id="cf-include"
+              value={cardLists.include}
+              onChange={(e) => setCardLists((l) => ({ ...l, include: e.target.value }))}
+              placeholder={"Sol Ring\nRhystic Study"}
+              rows={4}
+              className="cf-field text-sm resize-y"
+            />
+          </div>
+          <div>
+            <label htmlFor="cf-exclude" className="flex items-baseline justify-between text-xs text-parchment/60 font-semibold mb-1.5">
+              Never include
+              {excludeCount > 0 && <span className="cf-mono font-normal text-brass/70">{excludeCount}</span>}
+            </label>
+            <textarea
+              id="cf-exclude"
+              value={cardLists.exclude}
+              onChange={(e) => setCardLists((l) => ({ ...l, exclude: e.target.value }))}
+              placeholder={"Cyclonic Rift\nArmageddon"}
+              rows={4}
+              className="cf-field text-sm resize-y"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-parchment/45 mt-2 leading-relaxed">
+          Must-include cards outside your commander&apos;s colours are skipped, and the result tells you which. They&apos;re kept even past your budget or the bracket&apos;s limits.
+        </p>
       </div>
 
       <button
@@ -418,6 +450,15 @@ export default function SetupView({
             {theme.trim() && (
               <>
                 {" · "}theme <span className="text-parchment font-semibold">{theme.trim()}</span>
+              </>
+            )}
+            {(includeCount > 0 || excludeCount > 0) && (
+              <>
+                {" · "}
+                <span className="text-parchment font-semibold">
+                  {[includeCount && `${includeCount} must-include`, excludeCount && `${excludeCount} banned`].filter(Boolean).join(", ")}
+                </span>{" "}
+                card{includeCount + excludeCount === 1 ? "" : "s"}
               </>
             )}
           </p>

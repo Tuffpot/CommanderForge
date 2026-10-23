@@ -1,9 +1,11 @@
-import { ArrowLeftRight, ExternalLink, X } from "lucide-react";
+import { ArrowLeftRight, ExternalLink, Plus, Trash2, X } from "lucide-react";
 import { formatPrice } from "../lib/budget";
 import { scryfallCardPageUrl } from "../lib/scryfall";
 import { PreviewImage } from "./CardImages";
 
-export default function CardPreviewModal({ previewCard, priceSource, setPreviewCard, swapOptions = [], onSwap }) {
+// `onAdd` and `onRemove`, when given, offer to add the card to the deck
+// being looked at, or cut it.
+export default function CardPreviewModal({ previewCard, priceSource, setPreviewCard, swapOptions = [], onSwap, onAdd = null, onRemove = null }) {
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 sm:p-6 z-20" onClick={() => setPreviewCard(null)}>
       <div className="cf-panel rounded-2xl p-5 w-full max-w-xs max-h-full overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -30,6 +32,16 @@ export default function CardPreviewModal({ previewCard, priceSource, setPreviewC
         >
           View on Scryfall <ExternalLink size={14} />
         </a>
+        {onAdd && (
+          <button onClick={onAdd} className="w-full mt-2 py-2.5 cf-btn-primary">
+            <Plus size={15} /> Add to deck
+          </button>
+        )}
+        {onRemove && (
+          <button onClick={onRemove} className="w-full mt-2 py-2.5 cf-btn-quiet text-red-300/90">
+            <Trash2 size={14} /> Cut from deck
+          </button>
+        )}
         {swapOptions.length > 0 && (
           <div className="mt-4 pt-4 border-t border-white/10">
             <p className="cf-eyebrow mb-2">Swap it for</p>

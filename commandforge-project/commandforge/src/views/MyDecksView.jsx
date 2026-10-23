@@ -1,4 +1,4 @@
-import { Loader2, Trash2, User } from "lucide-react";
+import { Loader2, Pencil, Trash2, User } from "lucide-react";
 import CardRow from "../components/CardRow";
 import ColorPips from "../components/ColorPips";
 import ExportButtons from "../components/ExportButtons";
@@ -15,6 +15,9 @@ export default function MyDecksView({
   deleteAccount,
   deleteDeck,
   openAuthModal,
+  openDeckError,
+  openSavedDeck,
+  openingDeckId,
   savedDecks,
   session,
   shareStatus,
@@ -28,7 +31,7 @@ export default function MyDecksView({
       <h1 className="cf-display text-3xl text-parchment mb-1.5">My decks</h1>
       <p className="text-xs text-parchment/40 mb-6">
         {session
-          ? "Saved to your account, so they're on any device you sign in on."
+          ? "Saved to your account, so they're on any device you sign in on. Press Edit to change a deck's cards."
           : "Sign in to keep your decks and open them anywhere."}
       </p>
 
@@ -69,6 +72,13 @@ export default function MyDecksView({
               <div className="flex items-center gap-3 shrink-0">
                 <ColorPips identity={d.identity} size="sm" />
                 <button
+                  onClick={() => openSavedDeck(d)}
+                  disabled={openingDeckId != null}
+                  className="flex items-center gap-1.5 py-1.5 px-3 rounded-full border border-brass/40 text-xs font-semibold text-brass hover:border-brass hover:text-parchment disabled:opacity-50 transition"
+                >
+                  {openingDeckId === d.id ? <Loader2 size={12} className="animate-spin" /> : <Pencil size={12} />} Edit
+                </button>
+                <button
                   onClick={() => setViewingSaved(viewingSaved?.id === d.id ? null : d)}
                   className="py-2 px-1 text-xs font-semibold cf-gold hover:text-parchment underline underline-offset-2"
                 >
@@ -91,6 +101,8 @@ export default function MyDecksView({
                 </button>
               </div>
             </div>
+
+            {openDeckError?.id === d.id && <p className="text-xs text-red-300/80 mt-2">{openDeckError.message}</p>}
 
             {shareStatus?.id === d.id && (
               <ShareNote state={shareStatus.state} deckId={d.id} />

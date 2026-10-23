@@ -135,15 +135,16 @@ export function twoCardCombosFrom(json) {
 /* Breaks each combo by swapping one of its cards (never the commander)
    for the next alternative in the same role that isn't part of a combo.
    `alternatives` maps role → candidate names in order of preference.
+   Cards named in `keep` (lower case) are never the one taken out.
    Returns the new picks and the names taken out. */
-export function breakCombos(picks, combos, alternatives, commanderName) {
+export function breakCombos(picks, combos, alternatives, commanderName, keep = new Set()) {
   const comboCards = new Set(combos.flat().map((n) => n.toLowerCase()));
   const inDeck = new Set(Object.values(picks).flat().map((c) => c.name.toLowerCase()));
   const next = { ...picks };
   const removed = [];
   combos.forEach((pair) => {
     if (pair.some((n) => removed.includes(n))) return; // already broken
-    const target = pair.find((n) => n.toLowerCase() !== commanderName.toLowerCase() && roleOf(next, n));
+    const target = pair.find((n) => n.toLowerCase() !== commanderName.toLowerCase() && !keep.has(n.toLowerCase()) && roleOf(next, n));
     if (!target) return;
     const cat = roleOf(next, target);
     const swapIn = (alternatives[cat] || []).find((n) => !inDeck.has(n.toLowerCase()) && !comboCards.has(n.toLowerCase()));

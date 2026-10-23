@@ -9,21 +9,21 @@ export default function SaveDeckModal({
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 sm:p-6 z-20 overflow-y-auto">
       <div className="cf-panel rounded-2xl p-6 w-full max-w-sm">
-        <h3 className="cf-display text-lg text-parchment mb-4">Name this deck</h3>
+        <h3 className="cf-display text-lg text-parchment mb-4">{deck?.savedId ? "Save your changes" : "Name this deck"}</h3>
         <input
           value={deckName}
           onChange={(e) => setDeckName(e.target.value)}
-          placeholder={`${deck?.commander.name} Deck`}
+          placeholder={deck?.savedName || `${deck?.commander.name} Deck`}
           className="cf-field py-2.5 mb-2"
           autoFocus
         />
         {deckSaveError && <p className="text-xs text-red-300/80 mb-2">{deckSaveError}</p>}
         <div className="flex gap-3 mt-2">
           <button
-            onClick={saveDeck}
+            onClick={() => saveDeck(false)}
             className="flex-1 py-2.5 cf-btn-primary"
           >
-            Save
+            {deck?.savedId ? "Save changes" : "Save"}
           </button>
           <button
             onClick={() => setSaveModalOpen(false)}
@@ -32,6 +32,12 @@ export default function SaveDeckModal({
             Cancel
           </button>
         </div>
+        {deck?.savedId && (
+          <button onClick={() => saveDeck(true)} className="w-full mt-3 text-xs font-semibold text-parchment/60 hover:text-parchment underline underline-offset-2">
+            Save as a new deck instead
+          </button>
+        )}
+        <p className="text-xs text-parchment/45 mt-3">Saved decks are under My decks, at the top of the page.</p>
       </div>
     </div>
   );

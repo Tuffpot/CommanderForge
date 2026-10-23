@@ -6,6 +6,7 @@ import { dropIrrelevant } from "./relevance";
 import { edhrecFirst, edhrecRanks, fetchEdhrecCards } from "./edhrec";
 import { NONLAND_TARGET, LAND_TARGET, checkCombos, summariseBracket } from "./buildDeck";
 import { applyBracketLimits, bracketLimits, fetchGameChangers } from "./bracketRules";
+import { forceIncludes } from "./cardLists";
 import {
   CATEGORY_TESTS, synergyTest, fullText, isLand, isBasicLand, legalInCommander, fitsIdentity, byPopularity,
 } from "./collection";
@@ -23,15 +24,21 @@ const SUGGESTIONS_PER_ROLE = 5;
    collection can't fill a role, the slot goes to the best other owned
    card, and the result lists cards worth buying for that role. Only a
    collection with fewer than 62 playable spells gets cards the person
-   doesn't own, each marked `missing`. */
+   doesn't own, each marked `missing`. Must-include cards (`opts.include`,
+   as resolveIncludes returns them) go in whether owned or not, and banned
+   ones (`opts.exclude`, names) never do. */
 export async function buildDeckFromCollection(commander, style, bracket, ownedCards, opts = {}) {
-  const { priceSource = "none", theme = null, themeQuery = null } = opts;
+  const { priceSource = "none", theme = null, themeQuery = null, include = [], exclude = [] } = opts;
   const identity = commander.identity;
   const recipe = bracket.recipe;
   const commanderKey = commander.name.toLowerCase();
   const usedNames = new Set([commanderKey]);
   const picks = { ramp: [], draw: [], removal: [], protection: [], synergy: [], wincon: [], utility: [] };
   const cardData = {};
+  const banned = new Set(exclude.map((n) => n.toLowerCase()));
+  const notBanned = (c) => !banned.has(c.name.toLowerCase()) && !banned.has(c.name.toLowerCase().split(" // ")[0]);
+  // Must-include cards go in once the rest is built.
+  include.forEach((c) => usedNames.add(c.name.toLowerCase()));
 
   // These only tap for the commander's colours, so they make nothing in a
   // colourless deck.
@@ -41,6 +48,7 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
     legalInCommander(c) &&
     fitsIdentity(c, identity) &&
     !isBasicLand(c) &&
+    notBanned(c) &&
     (identity.length > 0 || !deadInColorless.has(c.name.toLowerCase()))
   );
   playable.forEach((c) => { cardData[c.name.toLowerCase()] = mapScryfallCard(c); });
@@ -147,7 +155,7 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
     const strict = limits.gameChangers < Infinity ? { ...limits, gameChangers: 0, extraTurns: 0 } : limits;
     shortCats.forEach((cat, i) => {
       searched[cat] = applyBracketLimits([results[i].map(mapScryfallCard)], strict, gameChangers)[0]
-        .filter((c) => !ownedCards[c.name.toLowerCase()] && c.name.toLowerCase() !== commanderKey);
+        .filter((c) => !ownedCards[c.name.toLowerCase()] && c.name.toLowerCase() !== commanderKey && notBanned(c));
       searched[cat].forEach((c) => { cardData[c.name.toLowerCase()] = c; });
     });
   }
@@ -187,10 +195,22 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
     // basics are near-free either way; missing images here are harmless
   }
 
+  if (include.length) {
+    include.forEach((c) => { cardData[c.name.toLowerCase()] = ownedCards[c.name.toLowerCase()] ? mapScryfallCard(ownedCards[c.name.toLowerCase()]) : c.data; });
+    const forced = forceIncludes(
+      { picks, nonbasics, basics },
+      include.map((c) => ({ ...c, missing: !ownedCards[c.name.toLowerCase()] }))
+    );
+    Object.assign(picks, forced.picks);
+    nonbasics.splice(0, nonbasics.length, ...forced.nonbasics);
+    basics.splice(0, basics.length, ...forced.basics);
+  }
+
   // Brackets 1 to 3 allow no two-card combos. A combo card is swapped for
   // the next owned spell that isn't in the deck.
   const comboCheck = await checkCombos(limits, commander, picks, nonbasics, () =>
-    spells.filter((c) => !usedNames.has(c.name.toLowerCase())).map((c) => c.name)
+    spells.filter((c) => !usedNames.has(c.name.toLowerCase())).map((c) => c.name),
+    new Set(include.map((c) => c.name.toLowerCase()))
   );
   Object.assign(picks, comboCheck.picks);
 

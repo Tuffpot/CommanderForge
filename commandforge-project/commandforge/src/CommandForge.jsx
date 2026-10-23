@@ -1,8 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase, supabaseUrl, supabaseAnonKey } from "./supabaseClient";
 import { buildNameQuery, filterAndSortByName, buildColorQuery, resolveThemeQuery } from "./lib/queries";
-import { scryfallSearchCommanders, scryfallRandomCommander, mapScryfallCardToCommander } from "./lib/scryfall";
-import { buildDeck, NONLAND_TARGET } from "./lib/buildDeck";
+import { scryfallSearchCommanders, scryfallRandomCommander, mapScryfallCardToCommander, mapScryfallCard, fetchCardsByName, fetchCheapestPrintings, fetchScryfallData } from "./lib/scryfall";
+import { buildDeck, BRACKETS, NONLAND_TARGET } from "./lib/buildDeck";
+import { guessArchetype } from "./lib/queries";
+import { parseNameList, resolveIncludes, roleFor } from "./lib/cardLists";
+import { addCard, deckHas, evenOutWithBasics, removeCard } from "./lib/editDeck";
+import { fetchEdhrecCards } from "./lib/edhrec";
 import { buildDeckFromCollection } from "./lib/buildFromCollection";
 import { parseCollectionText, fetchCollectionCards, mergeEntries, ownedCommanders, playableCount } from "./lib/collection";
 import { HOUSE_NAMES } from "./lib/colors";
@@ -31,6 +35,19 @@ function readLocalCollection() {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+// The person's must-include and banned card lists, kept in this browser
+// between brews.
+const CARD_LISTS_KEY = "cf-card-lists";
+
+function readCardLists() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CARD_LISTS_KEY) || "{}");
+    return { include: String(parsed.include || ""), exclude: String(parsed.exclude || "") };
+  } catch {
+    return { include: "", exclude: "" };
   }
 }
 
@@ -87,6 +104,12 @@ export default function CommandForge() {
   const [previewCard, setPreviewCard] = useState(null);
   const [budgetInput, setBudgetInput] = useState("");
   const [isForging, setIsForging] = useState(false);
+  const [cardLists, setCardLists] = useState(readCardLists);
+  const [pricesRefreshing, setPricesRefreshing] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
+  const [openingDeckId, setOpeningDeckId] = useState(null);
+  const [openDeckError, setOpenDeckError] = useState(null);
+  const [suggestionsStatus, setSuggestionsStatus] = useState("idle"); // idle | loading | done | error
 
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -289,6 +312,15 @@ export default function CommandForge() {
     setNotFound([]);
     setUseCollection(false);
   }
+
+  useEffect(() => {
+    try {
+      if (cardLists.include.trim() || cardLists.exclude.trim()) localStorage.setItem(CARD_LISTS_KEY, JSON.stringify(cardLists));
+      else localStorage.removeItem(CARD_LISTS_KEY);
+    } catch {
+      // Not saved for next time, but this brew still uses them.
+    }
+  }, [cardLists]);
 
   const ownedCommanderList = useMemo(() => ownedCommanders(ownedCards).map(mapScryfallCardToCommander), [ownedCards]);
   const searchingOwned = useCollection && ownedOnly;
@@ -527,9 +559,17 @@ export default function CommandForge() {
       // forces archetype-aware building even if that toggle is off.
       const buildStyle = inspired || usedTheme ? "edhrec" : "random";
       const themeQuery = usedTheme ? resolveThemeQuery(usedTheme) : null;
+      const exclude = parseNameList(cardLists.exclude);
+      const includeNames = parseNameList(cardLists.include);
+      const included = await resolveIncludes(includeNames, commander, priceSource);
+      // A card on both lists is a must-include.
+      const banned = exclude.filter((n) => !included.cards.some((c) => c.name.toLowerCase() === n.toLowerCase()));
+      const lists = { include: included.cards, exclude: banned };
       const built = useCollection
-        ? await buildDeckFromCollection(commander, buildStyle, activeBracket, ownedCards, { priceSource, theme: usedTheme, themeQuery })
-        : await buildDeck(commander, buildStyle, activeBracket, { budget: parsedBudget, priceSource, themeQuery });
+        ? await buildDeckFromCollection(commander, buildStyle, activeBracket, ownedCards, { priceSource, theme: usedTheme, themeQuery, ...lists })
+        : await buildDeck(commander, buildStyle, activeBracket, { budget: parsedBudget, priceSource, themeQuery, ...lists });
+      setSavedNotice(false);
+      setSuggestionsStatus("idle");
       setDeck({
         commander,
         // The style actually used, so a theme-driven build isn't described
@@ -540,6 +580,10 @@ export default function CommandForge() {
         bracket: activeBracket,
         // Owned cards cost nothing, so a collection build has no budget.
         budgetTarget: useCollection ? null : parsedBudget,
+        budgetSource: priceSource,
+        included: included.cards.map((c) => c.name),
+        includeIssues: included.issues,
+        bannedCount: banned.length,
         fromCollection: useCollection,
         commanderOwned: Boolean(ownedCards[commander.name.toLowerCase()]),
         shortRoles: built.shortRoles || {},
@@ -629,12 +673,14 @@ export default function CommandForge() {
     return out;
   }
 
-  async function saveDeck() {
+  // Saves the deck to the account: over the saved deck it was opened from,
+  // unless `asNew`, else as a new one.
+  async function saveDeck(asNew = false) {
     if (!deck || !session) return;
     setDeckSaveError("");
-    const { error } = await supabase.from("decks").insert({
-      user_id: session.user.id,
-      deck_name: deckName.trim() || `${deck.commander.name} Deck`,
+    const name = deckName.trim() || deck.savedName || `${deck.commander.name} Deck`;
+    const row = {
+      deck_name: name,
       commander: deck.commander.name,
       identity: deck.commander.identity,
       source: deck.fromCollection ? "collection" : deck.style === "edhrec" ? "edhrec_inspired" : "random",
@@ -643,15 +689,180 @@ export default function CommandForge() {
       nonbasics: deck.nonbasics,
       basics: deck.basics,
       price_source: priceSource,
-      card_data: priceSource !== "none" ? deckCardData(deck, cardData) : {},
-    });
+      card_data: deckCardData(deck, cardData),
+    };
+    const { data, error } = deck.savedId && !asNew
+      ? await supabase.from("decks").update(row).eq("id", deck.savedId).select("id").single()
+      : await supabase.from("decks").insert({ ...row, user_id: session.user.id }).select("id").single();
     if (error) {
       setDeckSaveError(error.message || "Couldn't save this deck.");
       return;
     }
+    // Saving again updates this one rather than making another copy.
+    setDeck((d) => (d ? { ...d, savedId: data.id, savedName: name } : d));
+    setSavedNotice(true);
     await refreshSavedDecks();
     setSaveModalOpen(false);
     setDeckName("");
+  }
+
+  // Opens a saved deck on the result screen, where it can be edited and
+  // saved again. Card images, prices and the commander's details are looked
+  // up fresh, falling back to what was saved with it.
+  async function openSavedDeck(d) {
+    setOpeningDeckId(d.id);
+    setOpenDeckError(null);
+    const names = [
+      d.commander,
+      ...Object.values(d.picks).flat().map((c) => c.name),
+      ...d.nonbasics.map((l) => l.name),
+      ...d.basics.map((l) => l.name),
+    ];
+    let data = d.cardData || {};
+    try {
+      data = { ...data, ...(await fetchScryfallData(names)) };
+    } catch {
+      if (!Object.keys(data).length) {
+        setOpenDeckError({ id: d.id, message: "Couldn't reach Scryfall to load this deck's cards. Check your connection and try again." });
+        setOpeningDeckId(null);
+        return;
+      }
+    }
+    const c = data[d.commander.toLowerCase()] || {};
+    const commander = {
+      name: d.commander,
+      identity: d.identity,
+      archetype: guessArchetype(c.oracleText),
+      blurb: c.typeLine || "Commander",
+      gameChanger: Boolean(c.gameChanger),
+      imageSmall: c.imageSmall || null,
+      imageLarge: c.imageLarge || null,
+      priceUsd: c.priceUsd || null,
+      priceEur: c.priceEur || null,
+      scryfallUri: c.scryfallUri || null,
+      oracleText: c.oracleText || null,
+    };
+    setDeck({
+      commander,
+      style: d.source === "edhrec_inspired" ? "edhrec" : "random",
+      theme: null,
+      shortfall: 0,
+      bracket: BRACKETS.find((b) => b.name === d.bracketName) || BRACKETS[1],
+      budgetTarget: null,
+      fromCollection: d.source === "collection",
+      commanderOwned: Boolean(ownedCards[d.commander.toLowerCase()]),
+      shortRoles: {},
+      suggestions: {},
+      missingCount: 0,
+      picks: d.picks,
+      alternatives: {},
+      bracketCheck: null,
+      nonbasics: d.nonbasics,
+      basics: d.basics,
+      savedId: d.id,
+      savedName: d.deckName,
+    });
+    setCardData(data);
+    setCardDataStatus("done");
+    if (d.priceSource && d.priceSource !== "none") setPriceSource(d.priceSource);
+    setSavedNotice(false);
+    setSuggestionsStatus("idle");
+    setOpeningDeckId(null);
+    setView("result");
+    window.scrollTo(0, 0);
+  }
+
+  // Switches where card images and prices come from on the result screen,
+  // looking up any the deck doesn't have in that currency yet.
+  async function changePriceSource(source) {
+    setPriceSource(source);
+    if (source === "none" || !deck) return;
+    const field = source === "eur" ? "priceEur" : "priceUsd";
+    const names = [
+      deck.commander.name,
+      ...Object.values(deck.picks).flat().map((c) => c.name),
+      ...deck.nonbasics.map((l) => l.name),
+      ...Object.values(deck.alternatives || {}).flat(),
+      ...Object.values(deck.suggestions || {}).flat(),
+    ].filter((n) => {
+      const entry = cardData[n.toLowerCase()];
+      return !entry || entry[field] == null || !entry.imageSmall;
+    });
+    if (!names.length) return;
+    setPricesRefreshing(true);
+    try {
+      const found = await fetchCheapestPrintings(names, source);
+      setCardData((prev) => {
+        const next = { ...prev };
+        Object.entries(found).forEach(([key, entry]) => { next[key] = { ...prev[key], ...entry }; });
+        return next;
+      });
+    } catch {
+      // Cards without a price show "—", as they do after a build.
+    } finally {
+      setPricesRefreshing(false);
+    }
+  }
+
+  // Hand edits on the result screen.
+  function addToDeck(name, role) {
+    setDeck((d) => (d ? addCard(d, name, role, cardData[name.toLowerCase()]) : d));
+    setSavedNotice(false);
+    setPreviewCard(null);
+  }
+
+  // A card found by name search, with Scryfall's full data.
+  function addSearchedCard(card) {
+    setCardData((prev) => ({ ...prev, [card.name.toLowerCase()]: prev[card.name.toLowerCase()] || mapScryfallCard(card) }));
+    setDeck((d) => (d ? addCard(d, card.name, roleFor(card), mapScryfallCard(card)) : d));
+    setSavedNotice(false);
+  }
+
+  function removeFromDeck(name) {
+    setDeck((d) => (d ? removeCard(d, name) : d));
+    setSavedNotice(false);
+    setPreviewCard(null);
+  }
+
+  function evenOutDeck() {
+    setDeck((d) => (d ? evenOutWithBasics(d, d.commander.identity) : d));
+    setSavedNotice(false);
+  }
+
+  // Cards real decks with this commander run that this one doesn't, for a
+  // deck with no swaps of its own to offer (one opened from My decks).
+  async function loadSuggestedAdditions() {
+    if (!deck) return;
+    setSuggestionsStatus("loading");
+    const banned = new Set(parseNameList(cardLists.exclude).map((n) => n.toLowerCase()));
+    const popular = (await fetchEdhrecCards(deck.commander.name)) || [];
+    const names = popular
+      .map((c) => c.name)
+      .filter((n) => !deckHas(deck, n) && !banned.has(n.toLowerCase()))
+      .slice(0, 30);
+    if (!names.length) {
+      setSuggestionsStatus(popular.length ? "done" : "error");
+      return;
+    }
+    try {
+      const cards = await fetchCardsByName(names, priceSource);
+      const byRole = {};
+      names.forEach((n) => {
+        const card = cards.find((c) => c.name.toLowerCase() === n.toLowerCase());
+        if (!card) return;
+        const role = roleFor(card);
+        (byRole[role] = byRole[role] || []).push(card.name);
+      });
+      setCardData((prev) => {
+        const next = { ...prev };
+        cards.forEach((c) => { next[c.name.toLowerCase()] = next[c.name.toLowerCase()] || mapScryfallCard(c); });
+        return next;
+      });
+      setDeck((d) => (d ? { ...d, alternatives: { ...byRole, ...d.alternatives } } : d));
+      setSuggestionsStatus("done");
+    } catch {
+      setSuggestionsStatus("error");
+    }
   }
 
   // Copies a deck in the text format another site imports. `target` is
@@ -727,6 +938,7 @@ export default function CommandForge() {
   }
 
   function reset() {
+    setSavedNotice(false);
     setView("setup");
     setSearch("");
     setSelectedCommander(null);
@@ -795,11 +1007,23 @@ export default function CommandForge() {
               setTheme={setTheme}
               theme={theme}
               toggleColor={toggleColor}
+              cardLists={cardLists}
+              setCardLists={setCardLists}
             />
           )}
 
           {view === "result" && deck && (
             <ResultView
+              addSearchedCard={addSearchedCard}
+              addToDeck={addToDeck}
+              changePriceSource={changePriceSource}
+              evenOutDeck={evenOutDeck}
+              loadSuggestedAdditions={loadSuggestedAdditions}
+              openMyDecks={() => setView("decks")}
+              pricesRefreshing={pricesRefreshing}
+              removeFromDeck={removeFromDeck}
+              savedNotice={savedNotice}
+              suggestionsStatus={suggestionsStatus}
               cardData={cardData}
               cardDataStatus={cardDataStatus}
               copied={copied}
@@ -812,7 +1036,10 @@ export default function CommandForge() {
               reset={reset}
               session={session}
               setPreviewCard={setPreviewCard}
-              setSaveModalOpen={setSaveModalOpen}
+              setSaveModalOpen={(open) => {
+                if (open) setDeckName(deck.savedName || "");
+                setSaveModalOpen(open);
+              }}
             />
           )}
 
@@ -857,6 +1084,9 @@ export default function CommandForge() {
               decksLoading={decksLoading}
               deleteAccount={deleteAccount}
               deleteDeck={deleteDeck}
+              openDeckError={openDeckError}
+              openSavedDeck={openSavedDeck}
+              openingDeckId={openingDeckId}
               openAuthModal={openAuthModal}
               savedDecks={savedDecks}
               session={session}
@@ -911,6 +1141,8 @@ export default function CommandForge() {
               : []
           }
           onSwap={(newName) => swapCard(previewCard.swapRole, previewCard.name, newName)}
+          onAdd={previewCard.addRole && deck && !deckHas(deck, previewCard.name) ? () => addToDeck(previewCard.name, previewCard.addRole) : null}
+          onRemove={previewCard.inDeck && deck ? () => removeFromDeck(previewCard.name) : null}
         />
       )}
     </div>

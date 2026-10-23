@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { houseNameForColors } from "./colors";
-import { describeDeck } from "./describeDeck";
+import { describeDeck, playstyleName } from "./describeDeck";
 
 describe("houseNameForColors", () => {
   it("names guilds and shards whatever order the colours come in", () => {
@@ -36,5 +36,16 @@ describe("describeDeck", () => {
 
   it("returns nothing without a deck", () => {
     expect(describeDeck(null)).toBe("");
+  });
+});
+
+describe("playstyleName", () => {
+  const base = { commander: { name: "Edgar Markov", identity: ["W", "B", "R"], archetype: "tokens" } };
+
+  it("names the theme or archetype as the theme chips do", () => {
+    expect(playstyleName(base)).toBe("Tokens");
+    expect(playstyleName({ ...base, theme: "plus one counters" })).toBe("+1/+1 Counters");
+    expect(playstyleName({ ...base, theme: "vampires" })).toBe("Vampires");
+    expect(playstyleName({ commander: { ...base.commander, archetype: null } })).toBe("Midrange value");
   });
 });

@@ -117,6 +117,18 @@ describe("breakCombos", () => {
     expect(out.draw.map((c) => c.name)).toEqual(["Demonic Consultation"]);
   });
 
+  it("never removes a card it's told to keep", () => {
+    const picks = { wincon: [{ name: "Thassa's Oracle" }], draw: [{ name: "Demonic Consultation" }] };
+    const { removed } = breakCombos(
+      picks,
+      [["Thassa's Oracle", "Demonic Consultation"]],
+      { draw: ["Night's Whisper"] },
+      "Kinnan, Bonder Prodigy",
+      new Set(["thassa's oracle"])
+    );
+    expect(removed).toEqual(["Demonic Consultation"]);
+  });
+
   it("never removes the commander", () => {
     const picks = { synergy: [{ name: "Curiosity" }] };
     const { picks: out, removed } = breakCombos(picks, [["Niv-Mizzet, Parun", "Curiosity"]], { synergy: ["Opt"] }, "Niv-Mizzet, Parun");

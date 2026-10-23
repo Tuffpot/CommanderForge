@@ -24,6 +24,8 @@ export default function BracketCheck({ bracket, check }) {
 
   if (check.combos === "not-needed") rows.push({ ok: true, text: "Two-card combos allowed." });
   else if (check.combos === "clear") rows.push({ ok: true, text: "No two-card combos, checked with Commander Spellbook." });
+  else if (check.combos === "edited")
+    rows.push({ ok: false, text: "Cards added by hand haven't been checked for two-card combos. This bracket allows none." });
   else if (check.combos === "removed")
     rows.push({ ok: true, text: `Took out ${check.combosRemoved.join(", ")} to break ${check.combosRemoved.length === 1 ? "a two-card combo" : "two-card combos"}, checked with Commander Spellbook.` });
   else rows.push({ ok: false, text: "Couldn't reach Commander Spellbook to check for two-card combos. Brew again to retry." });

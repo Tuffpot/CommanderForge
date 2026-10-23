@@ -8,6 +8,7 @@ import {
 import { dropIrrelevant } from "./relevance";
 import { edhrecFirst, edhrecRanks, fetchEdhrecCards } from "./edhrec";
 import { applyBracketLimits, bracketLimits, breakCombos, capPicks, fetchGameChangers, findTwoCardCombos, isExtraTurn } from "./bracketRules";
+import { forceIncludes } from "./cardLists";
 
 export const BRACKETS = [
   { id: 1, name: "Exhibition", tag: "Casual / jank", recipe: { ramp: 6, draw: 8, removal: 6, protection: 2, synergy: 15, wincon: 1, utility: 24 } },
@@ -20,8 +21,10 @@ export const NONLAND_TARGET = 62;
 const ALTERNATIVES_PER_ROLE = 12;
 export const LAND_TARGET = 99 - NONLAND_TARGET;
 
+/* `opts.include` are the person's must-include cards, as resolveIncludes
+   returns them, and `opts.exclude` the names of cards they've banned. */
 export async function buildDeck(commander, style, bracket, opts = {}) {
-  const { budget = null, priceSource = "none", themeQuery = null } = opts;
+  const { budget = null, priceSource = "none", themeQuery = null, include = [], exclude = [] } = opts;
   const identity = commander.identity;
   const recipe = bracket.recipe;
   const usedNames = new Set([commander.name.toLowerCase()]);
@@ -51,6 +54,12 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
     style === "edhrec" ? fetchEdhrecCards(commander.name) : Promise.resolve(null),
   ]);
   Object.assign(cardData, commanderPrinting);
+  // Must-include cards go in once the rest is built, so the builder leaves
+  // them out until then.
+  include.forEach((c) => {
+    cardData[c.name.toLowerCase()] = c.data;
+    usedNames.add(c.name.toLowerCase());
+  });
 
   // If every single fetch came back empty, this is almost certainly a
   // network failure rather than a genuinely cardless color combo — surface
@@ -109,6 +118,21 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   }
   const fromEdhrec = (c) => edhrec.has(c.name.toLowerCase());
 
+  // Banned cards never make the deck, or the swaps offered for it.
+  const banned = new Set(exclude.map((n) => n.toLowerCase()));
+  const notBanned = (c) => !banned.has(c.name.toLowerCase()) && !banned.has(c.name.toLowerCase().split(" // ")[0]);
+  if (banned.size) {
+    catKeys.forEach((cat) => { categoryCards[cat] = categoryCards[cat].filter(notBanned); });
+    nonbasicPool.splice(0, nonbasicPool.length, ...nonbasicPool.filter(notBanned));
+  }
+  // A must-include card fills the role Scryfall's searches found it for,
+  // else the one its rules text suggests.
+  const includes = include.map((c) => ({
+    ...c,
+    role: c.role === "lands" ? "lands" : catKeys.find((cat) => categoryCards[cat].some((x) => x.name === c.name)) || c.role,
+  }));
+  const keep = new Set(include.map((c) => c.name.toLowerCase()));
+
   // The bracket's rules on Game Changers, mass land denial and extra turns.
   // If the Game Changer search failed, Scryfall's own flag on each card
   // stands in for it. Cards the bracket bans outright come out of the pools
@@ -139,7 +163,9 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   const commanderPrice = ownCommanderPrice != null
     ? parseFloat(ownCommanderPrice)
     : priceOf(commander.name, cardData, priceSource) ?? 0;
-  const deckBudget = budgetActive ? Math.max(0, budget - commanderPrice) : Infinity;
+  // Must-include cards are paid for up front too.
+  const includeCost = include.reduce((s, c) => s + (priceOf(c.name, cardData, priceSource) ?? UNKNOWN_PRICE_ESTIMATE), 0);
+  const deckBudget = budgetActive ? Math.max(0, budget - commanderPrice - includeCost) : Infinity;
   // Basics are effectively free, so the budget really has to cover the
   // nonland cards plus the handful of nonbasic lands — that's the slot
   // count the per-card ceiling is averaged over.
@@ -304,10 +330,18 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
     }
   }
 
+  if (includes.length) {
+    const forced = forceIncludes({ picks, nonbasics, basics }, includes);
+    Object.assign(picks, forced.picks);
+    nonbasics.splice(0, nonbasics.length, ...forced.nonbasics);
+    basics.splice(0, basics.length, ...forced.basics);
+  }
+
   // Brackets 1 to 3 allow no two-card combos: swap a card out of any the
   // deck ended up with. Replacements skip capped and off-theme cards.
   const comboCheck = await checkCombos(limits, commander, picks, nonbasics, (cat) =>
-    categoryCards[cat].filter(fitsDeck).map((c) => c.name)
+    categoryCards[cat].filter(fitsDeck).map((c) => c.name),
+    keep
   );
   Object.assign(picks, comboCheck.picks);
 
@@ -319,10 +353,11 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
     const { lands, ...trimmed } = trimToBudget({
       picks: { lands: nonbasics, ...picks },
       poolFor: (role) => (role === "lands" ? nonbasicPool : categoryCards[role]) || [],
-      limit: deckBudget,
+      limit: deckBudget + includeCost,
       cardData,
       priceSource,
       allowed: fitsDeck,
+      keep,
     });
     Object.assign(picks, trimmed);
     nonbasics.splice(0, nonbasics.length, ...lands.map((l) => ({ name: l.name, qty: 1 })));
@@ -342,16 +377,16 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
 
 /* Looks the finished deck up on Commander Spellbook when the bracket bans
    two-card combos, and breaks any it finds. `alternativesFor(cat)` lists
-   replacement candidates for a role. `status` is "not-needed", "clear",
+   replacement candidates for a role; cards named in `keep` stay. `status` is "not-needed", "clear",
    "removed" or "unavailable" (Spellbook couldn't be reached). */
-export async function checkCombos(limits, commander, picks, nonbasics, alternativesFor) {
+export async function checkCombos(limits, commander, picks, nonbasics, alternativesFor, keep = new Set()) {
   if (limits.twoCardCombos) return { picks, removed: [], status: "not-needed" };
   const names = [...Object.values(picks).flat().map((c) => c.name), ...nonbasics.map((l) => l.name)];
   try {
     const combos = await findTwoCardCombos(commander.name, names);
     if (!combos.length) return { picks, removed: [], status: "clear" };
     const alternatives = Object.fromEntries(Object.keys(picks).map((cat) => [cat, alternativesFor(cat)]));
-    const broken = breakCombos(picks, combos, alternatives, commander.name);
+    const broken = breakCombos(picks, combos, alternatives, commander.name, keep);
     return { ...broken, status: broken.removed.length ? "removed" : "clear" };
   } catch {
     return { picks, removed: [], status: "unavailable" };

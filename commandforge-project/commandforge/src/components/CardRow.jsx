@@ -67,11 +67,11 @@ export default function CardRow({ name, qty, cardData, priceSource, onPreview, m
           {hasImage ? (
             <img src={data.imageSmall} alt="" className="w-full h-full object-cover" />
           ) : (
-            <ImageOff size={11} className="text-white/20" />
+            <ImageOff size={11} className="text-parchment/20" />
           )}
         </span>
       )}
-      <span className="text-sm text-white/85 leading-snug flex-1 min-w-0 truncate">
+      <span className="text-sm text-parchment/85 leading-snug flex-1 min-w-0 truncate">
         {qty > 1 ? `${qty}× ` : ""}{name}
       </span>
       {missing && (
@@ -80,7 +80,7 @@ export default function CardRow({ name, qty, cardData, priceSource, onPreview, m
         </span>
       )}
       {showThumb && (
-        <span className="cf-mono text-[11px] text-white/50 shrink-0">
+        <span className="cf-mono text-[11px] text-parchment/50 shrink-0">
           {formatPrice(price, priceSource)}
         </span>
       )}

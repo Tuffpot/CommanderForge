@@ -1,8 +1,10 @@
-import { Check, ChevronLeft, ClipboardCopy, Loader2, Save } from "lucide-react";
+import { ChevronLeft, Loader2, Save } from "lucide-react";
 import { CommanderArt } from "../components/CardImages";
 import AdSlot from "../components/AdSlot";
 import CardRow from "../components/CardRow";
+import ExportButtons from "../components/ExportButtons";
 import ColorPips from "../components/ColorPips";
+import DeckStats from "../components/DeckStats";
 import { formatPrice, priceOf } from "../lib/budget";
 import { CAT_LABELS } from "../lib/buildDeck";
 import { describeDeck } from "../lib/describeDeck";
@@ -16,13 +18,21 @@ function suggestionCount(deck) {
   return Object.values(deck.suggestions || {}).flat().length;
 }
 
+function CategoryHeading({ label, count }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 mb-2 pb-1.5 border-b border-white/[0.06]">
+      <h3 className="cf-display text-base text-parchment">{label}</h3>
+      <span className="cf-mono text-xs text-brass/70">{count}</span>
+    </div>
+  );
+}
+
 export default function ResultView({
   cardData,
   cardDataStatus,
-  cardmarketCopied,
-  cardmarketCopyError,
-  copyForCardmarket,
-  copyNeededForCardmarket,
+  copied,
+  copyDeck,
+  copyError,
   deck,
   deckTotalPrice,
   openAuthModal,
@@ -34,38 +44,36 @@ export default function ResultView({
 }) {
   return (
     <div className="cf-fade">
-      <button onClick={reset} className="flex items-center gap-1 text-sm text-white/50 hover:text-white/80 mb-5 transition">
+      <button onClick={reset} className="flex items-center gap-1 text-sm text-parchment/50 hover:text-parchment/80 mb-5 transition">
         <ChevronLeft size={16} /> Back
       </button>
 
       <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-6">
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span className="cf-mono text-[11px] cf-gold font-semibold tracking-wide">
-            {deck.style === "edhrec" ? "EDHREC-INSPIRED" : "RANDOM BUILD"}
+        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-brass/40 text-brass">
+            Bracket {deck.bracket.id} · {deck.bracket.name}
+          </span>
+          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-white/15 text-parchment/60">
+            {deck.style === "edhrec" ? "Inspired by real decks" : "Random build"}
           </span>
           {deck.fromCollection && (
-            <>
-              <span className="text-white/30">·</span>
-              <span className="cf-mono text-[11px] text-green-300 font-semibold tracking-wide">FROM YOUR COLLECTION</span>
-            </>
+            <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-green-300/30 text-green-300/90">
+              From your collection
+            </span>
           )}
-          <span className="text-white/30">·</span>
-          <span className="cf-mono text-[11px] text-purple-300 font-semibold tracking-wide">
-            BRACKET {deck.bracket.id} · {deck.bracket.name.toUpperCase()}
-          </span>
         </div>
         <div className="flex items-start gap-4 flex-wrap">
           {priceSource !== "none" && <CommanderArt imageUrl={deck.commander.imageLarge} />}
           <div className="flex-1 min-w-[200px]">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="min-w-0">
-                <h2 className="cf-display text-2xl sm:text-3xl text-white break-words">{deck.commander.name}</h2>
-                <p className="text-sm text-white/55 mt-1.5">{deck.commander.blurb}</p>
+                <h2 className="cf-display text-2xl sm:text-3xl text-parchment break-words">{deck.commander.name}</h2>
+                <p className="text-sm text-parchment/55 mt-1.5">{deck.commander.blurb}</p>
               </div>
               <ColorPips identity={deck.commander.identity} />
             </div>
             {priceSource !== "none" && (
-              <p className="text-xs text-white/45 leading-relaxed whitespace-pre-line mt-2.5">
+              <p className="text-xs text-parchment/45 leading-relaxed whitespace-pre-line mt-2.5">
                 {cardDataStatus === "loading"
                   ? "Loading card text…"
                   : cardData[deck.commander.name.toLowerCase()]?.oracleText || "Card text unavailable."}
@@ -74,17 +82,17 @@ export default function ResultView({
           </div>
         </div>
 
-        <p className="text-sm text-white/70 leading-relaxed mt-4 pt-4 border-t border-white/10">
+        <p className="text-sm text-parchment/70 leading-relaxed mt-4 pt-4 border-t border-white/10">
           {describeDeck(deck)}
         </p>
 
         {priceSource !== "none" && (
           <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
-            <span className="text-xs text-white/50">
-              Estimated deck total, commander included ({priceSource === "eur" ? "Cardmarket" : "TCGPlayer"})
+            <span className="text-xs text-parchment/50">
+              Estimated deck total, commander included ({priceSource === "eur" ? "Cardmarket" : "TCGplayer"})
             </span>
             {cardDataStatus === "loading" ? (
-              <span className="flex items-center gap-1.5 text-xs text-white/50">
+              <span className="flex items-center gap-1.5 text-xs text-parchment/50">
                 <Loader2 size={12} className="animate-spin" /> Fetching prices…
               </span>
             ) : cardDataStatus === "error" ? (
@@ -101,20 +109,20 @@ export default function ResultView({
           <p className={`text-xs mt-2 text-right ${deckTotalPrice() <= deck.budgetTarget ? "text-green-400/80" : "text-amber-400/80"}`}>
             {deckTotalPrice() <= deck.budgetTarget
               ? `Under your ${formatPrice(deck.budgetTarget, priceSource)} budget by ${formatPrice(deck.budgetTarget - deckTotalPrice(), priceSource)}`
-              : `${formatPrice(deckTotalPrice() - deck.budgetTarget, priceSource)} over your ${formatPrice(deck.budgetTarget, priceSource)} budget — ${(priceOf(deck.commander.name, cardData, priceSource) ?? 0) >= deck.budgetTarget ? "the commander alone costs more than the budget, so the rest was built as cheaply as possible" : "not enough cheap eligible cards to fit every slot"}`}
+              : `${formatPrice(deckTotalPrice() - deck.budgetTarget, priceSource)} over your ${formatPrice(deck.budgetTarget, priceSource)} budget. ${(priceOf(deck.commander.name, cardData, priceSource) ?? 0) >= deck.budgetTarget ? "The commander alone costs more than that, so the rest was built as cheaply as possible." : "There weren't enough cheap cards that fit to fill every slot."}`}
           </p>
         )}
       </div>
 
       {cardDataStatus === "done" && deck.fromCollection && (
         <div className="cf-panel rounded-xl p-4 mb-4">
-          <p className="text-xs text-white/60 leading-relaxed">
+          <p className="text-xs text-parchment/60 leading-relaxed">
             {neededCount(deck) === 0
               ? "Every card in this deck is one you own (basic lands aside)."
-              : `${neededCount(deck)} card${neededCount(deck) === 1 ? " isn't" : "s aren't"} in your collection${!deck.commanderOwned ? ", the commander included" : ""}. ${deck.missingCount ? "Your collection didn't have enough cards in these colors to fill the deck, so the best picks you'd need are marked NEED." : ""}`}
+              : `${neededCount(deck)} card${neededCount(deck) === 1 ? " isn't" : "s aren't"} in your collection${!deck.commanderOwned ? ", the commander included" : ""}. ${deck.missingCount ? "Your collection didn't have enough cards in these colors to fill the deck, so the best picks you'd need to buy are marked NEED." : ""}`}
           </p>
           {Object.keys(deck.shortRoles || {}).length > 0 && (
-            <p className="text-xs text-white/60 leading-relaxed mt-2">
+            <p className="text-xs text-parchment/60 leading-relaxed mt-2">
               Your collection is light on{" "}
               {Object.entries(deck.shortRoles)
                 .map(([cat, r]) => `${CAT_LABELS[cat].toLowerCase()} (${r.have} of ${r.want})`)
@@ -127,27 +135,27 @@ export default function ResultView({
 
       {cardDataStatus === "done" && deck.shortfall > 0 && (
         <div className="cf-panel rounded-xl p-4 mb-4 border-amber-400/30">
-          <p className="text-xs text-white/60 leading-relaxed">
-            Scryfall didn't return enough cards to fill {deck.shortfall} spell slot{deck.shortfall === 1 ? "" : "s"}, so {deck.shortfall === 1 ? "an extra basic land was" : `${deck.shortfall} extra basic lands were`} added instead. That happens when a narrow theme or colour combination has few matching cards, or when Scryfall was briefly busy, in which case forging again usually fixes it.
+          <p className="text-xs text-parchment/60 leading-relaxed">
+            Scryfall didn't return enough cards to fill {deck.shortfall} spell slot{deck.shortfall === 1 ? "" : "s"}, so {deck.shortfall === 1 ? "an extra basic land was" : `${deck.shortfall} extra basic lands were`} added instead. That happens when a narrow theme or colour combination has few matching cards, or when Scryfall was briefly busy, in which case brewing again usually fixes it.
           </p>
         </div>
       )}
 
       {cardDataStatus === "error" && (
         <div className="cf-panel rounded-xl p-4 mb-4 border-red-400/30">
-          <p className="text-xs text-white/60 leading-relaxed">
-            Couldn't reach Scryfall to source this deck's cards — every category and land now pulls live from their API, so this needs a working connection. Check your internet connection and try forging again. If some categories partially loaded, you may see a lighter deck below with extra basic lands filling the gap.
+          <p className="text-xs text-parchment/60 leading-relaxed">
+            Couldn't reach Scryfall to fetch this deck's cards. Every card comes live from Scryfall, so Brewhall needs a working connection. Check your internet and try brewing again. If some of it loaded, you may see a lighter deck below with extra basic lands filling the gaps.
           </p>
         </div>
       )}
+
+      {cardDataStatus === "done" && <DeckStats picks={deck.picks} cardData={cardData} />}
 
       <div className="space-y-3 mb-6">
         {Object.entries(deck.picks).map(([cat, cards]) =>
           cards.length ? (
             <div key={cat} className="cf-panel-alt rounded-xl p-4">
-              <p className="cf-mono text-[11px] cf-gold font-semibold mb-2.5 tracking-wide">
-                {CAT_LABELS[cat].toUpperCase()} · {cards.length}
-              </p>
+              <CategoryHeading label={CAT_LABELS[cat]} count={cards.length} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
                 {cards.map((c) => (
                   <CardRow
@@ -157,7 +165,9 @@ export default function ResultView({
                     qty={1}
                     cardData={cardData}
                     priceSource={priceSource}
-                    onPreview={setPreviewCard}
+                    onPreview={(card) =>
+                      setPreviewCard(deck.alternatives?.[cat]?.length ? { ...card, swapRole: cat } : card)
+                    }
                   />
                 ))}
               </div>
@@ -166,11 +176,12 @@ export default function ResultView({
         )}
 
         <div className="cf-panel-alt rounded-xl p-4">
-          <p className="cf-mono text-[11px] cf-gold font-semibold mb-2.5 tracking-wide">
-            LANDS · {deck.nonbasics.reduce((a, l) => a + l.qty, 0) + deck.basics.reduce((a, l) => a + l.qty, 0)}
-          </p>
+          <CategoryHeading
+            label="Lands"
+            count={deck.nonbasics.reduce((a, l) => a + l.qty, 0) + deck.basics.reduce((a, l) => a + l.qty, 0)}
+          />
           {priceSource !== "none" && deck.basics.length > 0 && (
-            <p className="text-xs text-white/50 mb-2.5">
+            <p className="text-xs text-parchment/50 mb-2.5">
               Basic lands aren't priced or counted in the deck total or budget. They cost pennies each, and most players already have plenty.
             </p>
           )}
@@ -191,11 +202,11 @@ export default function ResultView({
 
       {deck.fromCollection && Object.keys(deck.suggestions || {}).length > 0 && (
         <div className="cf-panel-alt rounded-xl p-4 mb-6">
-          <p className="cf-mono text-[11px] cf-gold font-semibold mb-1 tracking-wide">WORTH PICKING UP</p>
-          <p className="text-xs text-white/50 mb-3">Popular cards for this commander in the roles your collection is short on.</p>
+          <h3 className="cf-display text-lg text-parchment mb-1">Worth picking up</h3>
+          <p className="text-xs text-parchment/50 mb-3">Popular cards for this commander in the roles your collection is short on.</p>
           {Object.entries(deck.suggestions).map(([cat, names]) => (
             <div key={cat} className="mb-2 last:mb-0">
-              <p className="text-[11px] text-white/40 uppercase tracking-wide font-semibold mb-1">{CAT_LABELS[cat]}</p>
+              <p className="cf-eyebrow mb-1">{CAT_LABELS[cat]}</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
                 {names.map((name) => (
                   <CardRow key={name} name={name} qty={1} cardData={cardData} priceSource={priceSource} onPreview={setPreviewCard} />
@@ -216,42 +227,30 @@ export default function ResultView({
             if (session) {
               setSaveModalOpen(true);
             } else {
-              openAuthModal("Sign in (or create a free account) to save this deck.");
+              openAuthModal("Sign in, or create a free account, to save this deck.");
             }
           }}
-          className="flex-1 py-3.5 rounded-xl border-2 border-[#E3B25C]/70 bg-[#E3B25C]/15 hover:bg-[#E3B25C]/25 transition text-white font-semibold text-sm flex items-center justify-center gap-2"
+          className="flex-1 py-3.5 cf-btn-primary"
         >
-          <Save size={15} /> {session ? "Save Deck" : "Sign In to Save"}
+          <Save size={15} /> {session ? "Save deck" : "Sign in to save"}
         </button>
         <button
           onClick={reset}
-          className="flex-1 py-3.5 rounded-xl border-2 border-white/25 bg-white/5 hover:bg-white/10 transition text-white/85 font-semibold text-sm flex items-center justify-center gap-2"
+          className="flex-1 py-3.5 cf-btn-quiet"
         >
-          Brew Another
+          Brew another
         </button>
       </div>
 
-      <button
-        onClick={() =>
-          deck.fromCollection
-            ? copyNeededForCardmarket(deck)
-            : copyForCardmarket(deck.commander.name, deck.picks, deck.nonbasics)
-        }
-        disabled={deck.fromCollection && neededCount(deck) + suggestionCount(deck) === 0}
-        className="w-full py-3 rounded-xl border-2 border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition text-white/75 font-semibold text-sm flex items-center justify-center gap-2"
-      >
-        {cardmarketCopied ? (
-          <>
-            <Check size={15} className="text-green-400" /> Copied — paste straight into a Cardmarket Wants list
-          </>
-        ) : cardmarketCopyError ? (
-          <>Couldn't copy — your browser may be blocking clipboard access</>
-        ) : (
-          <>
-            <ClipboardCopy size={15} /> {deck.fromCollection ? "Copy Cards You Need for Cardmarket" : "Copy for Cardmarket Wants List"}
-          </>
-        )}
-      </button>
+      <div className="cf-panel rounded-2xl p-4 sm:p-5 mt-3">
+        <ExportButtons
+          copied={copied}
+          copyDeck={copyDeck}
+          copyError={copyError}
+          deck={deck}
+          needed={deck.fromCollection ? neededCount(deck) + suggestionCount(deck) : null}
+        />
+      </div>
     </div>
   );
 }

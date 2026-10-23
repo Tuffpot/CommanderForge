@@ -25,7 +25,7 @@ export default function AdSlot({ className = "" }) {
 
   return (
     <div className={className}>
-      <p className="cf-mono text-[10px] text-white/30 tracking-wide mb-1 text-center">ADVERTISEMENT</p>
+      <p className="cf-mono text-[10px] text-parchment/30 tracking-wide mb-1 text-center">ADVERTISEMENT</p>
       <ins
         className="adsbygoogle"
         style={{ display: "block" }}

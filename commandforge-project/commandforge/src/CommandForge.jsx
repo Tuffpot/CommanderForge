@@ -6,6 +6,8 @@ import { buildDeck, NONLAND_TARGET } from "./lib/buildDeck";
 import { buildDeckFromCollection } from "./lib/buildFromCollection";
 import { parseCollectionText, fetchCollectionCards, mergeEntries, ownedCommanders, playableCount } from "./lib/collection";
 import { HOUSE_NAMES } from "./lib/colors";
+import { mapDeckRow, shareUrl, sharedDeckIdFromUrl } from "./lib/shareDeck";
+import { archidektList, cardmarketList, moxfieldList, neededList } from "./lib/exportDeck";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import { loadAdSense } from "./lib/ads";
@@ -17,6 +19,7 @@ import SetupView from "./views/SetupView";
 import ResultView from "./views/ResultView";
 import MyDecksView from "./views/MyDecksView";
 import CollectionView from "./views/CollectionView";
+import SharedDeckView from "./views/SharedDeckView";
 
 // Where a signed-out visitor's collection is kept.
 const LOCAL_COLLECTION_KEY = "cf-collection";
@@ -60,7 +63,11 @@ export default function CommandForge() {
   // AdSense is configured; does nothing otherwise.
   useEffect(() => loadAdSense(), []);
 
-  const [view, setView] = useState("setup");
+  // A share link (?deck=<id>) opens straight onto that deck.
+  const [sharedDeckId] = useState(() => sharedDeckIdFromUrl(window.location.href));
+  const [view, setView] = useState(sharedDeckId ? "shared" : "setup");
+  const [sharedDeck, setSharedDeck] = useState({ status: sharedDeckId ? "loading" : "idle", deck: null });
+  const [shareStatus, setShareStatus] = useState(null); // { id, state: "copied" | "error" }
   const [search, setSearch] = useState("");
   const [selectedCommander, setSelectedCommander] = useState(null);
   const [bracket, setBracket] = useState(null);
@@ -87,8 +94,8 @@ export default function CommandForge() {
   const [colorMatchLoading, setColorMatchLoading] = useState(false);
   const [colorMatchError, setColorMatchError] = useState(false);
   const [randomizeError, setRandomizeError] = useState(false);
-  const [cardmarketCopied, setCardmarketCopied] = useState(false);
-  const [cardmarketCopyError, setCardmarketCopyError] = useState(false);
+  const [copied, setCopied] = useState(null);
+  const [copyError, setCopyError] = useState(null);
 
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -117,6 +124,22 @@ export default function CommandForge() {
   const [notFound, setNotFound] = useState([]);
   const [useCollection, setUseCollection] = useState(false);
   const [ownedOnly, setOwnedOnly] = useState(true);
+
+  useEffect(() => {
+    if (!sharedDeckId) return;
+    supabase.rpc("get_shared_deck", { deck_id: sharedDeckId }).then(({ data, error }) => {
+      const row = Array.isArray(data) ? data[0] : null;
+      setSharedDeck(error || !row ? { status: "missing", deck: null } : { status: "ready", deck: mapDeckRow(row) });
+    });
+  }, [sharedDeckId]);
+
+  // Leaving a shared deck drops ?deck= from the address bar, so a reload or
+  // a bookmark lands on the brew page rather than back on that deck.
+  useEffect(() => {
+    if (view !== "shared" && window.location.search.includes("deck=")) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [view]);
 
   // Track the Supabase auth session for the lifetime of the app.
   useEffect(() => {
@@ -283,21 +306,7 @@ export default function CommandForge() {
       .select("*")
       .order("created_at", { ascending: false });
     if (!error && data) {
-      setSavedDecks(
-        data.map((row) => ({
-          id: row.id,
-          deckName: row.deck_name,
-          commander: row.commander,
-          identity: row.identity,
-          source: row.source,
-          bracketName: row.bracket_name,
-          picks: row.picks,
-          nonbasics: row.nonbasics,
-          basics: row.basics,
-          priceSource: row.price_source,
-          cardData: row.card_data,
-        }))
-      );
+      setSavedDecks(data.map(mapDeckRow));
     }
     setDecksLoading(false);
   }
@@ -536,6 +545,7 @@ export default function CommandForge() {
         suggestions: built.suggestions || {},
         missingCount: built.missingCount || 0,
         picks: built.picks,
+        alternatives: built.alternatives || {},
         nonbasics: built.nonbasics,
         basics: built.basics,
       });
@@ -642,42 +652,59 @@ export default function CommandForge() {
     setDeckName("");
   }
 
-  // Cardmarket's wants-list importer accepts plain "<quantity> <card name>"
-  // lines pasted straight in — confirmed via their own help docs. Basics are
-  // left out since nobody actually needs to buy Plains/Islands.
-  function cardmarketList(commanderName, picks, nonbasics) {
-    const lines = [`1 ${commanderName}`];
-    Object.values(picks).flat().forEach((c) => lines.push(`1 ${c.name}`));
-    nonbasics.forEach((l) => lines.push(`${l.qty} ${l.name}`));
-    return lines.join("\n");
-  }
-
-  // For a collection build: only the cards the person doesn't own yet,
-  // plus the suggested ones for roles the collection is short on.
-  function neededList(d) {
-    const lines = [];
-    if (!d.commanderOwned) lines.push(`1 ${d.commander.name}`);
-    Object.values(d.picks).flat().filter((c) => c.missing).forEach((c) => lines.push(`1 ${c.name}`));
-    Object.values(d.suggestions || {}).flat().forEach((name) => lines.push(`1 ${name}`));
-    return lines.join("\n");
-  }
-
-  async function copyForCardmarket(commanderName, picks, nonbasics) {
-    await copyText(cardmarketList(commanderName, picks, nonbasics));
-  }
-
-  async function copyNeededForCardmarket(d) {
-    await copyText(neededList(d));
-  }
-
-  async function copyText(text) {
+  // Copies a deck in the text format another site imports. `target` is
+  // "moxfield", "archidekt", "cardmarket" or "needed" (a collection build's
+  // missing cards), and is what the button that was pressed shows as copied.
+  async function copyDeck(target, d) {
+    const commanderName = typeof d.commander === "string" ? d.commander : d.commander.name;
+    const text =
+      target === "moxfield" ? moxfieldList(commanderName, d.picks, d.nonbasics, d.basics)
+      : target === "archidekt" ? archidektList(commanderName, d.picks, d.nonbasics, d.basics)
+      : target === "needed" ? neededList(d)
+      : cardmarketList(commanderName, d.picks, d.nonbasics);
     try {
       await navigator.clipboard.writeText(text);
-      setCardmarketCopied(true);
-      setTimeout(() => setCardmarketCopied(false), 2000);
+      setCopyError(null);
+      setCopied(target);
+      setTimeout(() => setCopied((c) => (c === target ? null : c)), 2500);
     } catch {
-      setCardmarketCopyError(true);
-      setTimeout(() => setCardmarketCopyError(false), 2500);
+      setCopyError(target);
+      setTimeout(() => setCopyError((c) => (c === target ? null : c)), 3000);
+    }
+  }
+
+  // Swaps one spell in the built deck for another in the same role. The card
+  // swapped out goes back to the front of that role's alternatives so the
+  // swap can be undone.
+  function swapCard(cat, oldName, newName) {
+    setDeck((d) => {
+      if (!d) return d;
+      const picks = { ...d.picks, [cat]: d.picks[cat].map((c) => (c.name === oldName ? { name: newName } : c)) };
+      const alts = (d.alternatives?.[cat] || []).filter((n) => n !== newName);
+      return { ...d, picks, alternatives: { ...d.alternatives, [cat]: [oldName, ...alts] } };
+    });
+    setPreviewCard(null);
+  }
+
+  // Turns sharing on (and copies the link) or off for one of the person's
+  // saved decks.
+  async function toggleShare(d) {
+    const shared = !d.shared;
+    const { error } = await supabase.from("decks").update({ shared }).eq("id", d.id);
+    if (error) {
+      setShareStatus({ id: d.id, state: "error" });
+      return;
+    }
+    setSavedDecks((prev) => prev.map((x) => (x.id === d.id ? { ...x, shared } : x)));
+    if (!shared) {
+      setShareStatus({ id: d.id, state: "stopped" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl(d.id));
+      setShareStatus({ id: d.id, state: "copied" });
+    } catch {
+      setShareStatus({ id: d.id, state: "shared" });
     }
   }
 
@@ -704,23 +731,7 @@ export default function CommandForge() {
   }
 
   return (
-    <div className="min-h-screen w-full text-white" style={{ fontFamily: "'Manrope', sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap');
-        .cf-display { font-family: 'Cinzel', serif; letter-spacing: 0.02em; }
-        .cf-mono { font-family: 'JetBrains Mono', monospace; }
-        .cf-bg {
-          background-color: #0B0812;
-          background-image: radial-gradient(ellipse 900px 500px at 50% 0%, rgba(88,58,120,0.45), transparent 70%);
-        }
-        .cf-panel { background-color: #150F20; border: 1px solid rgba(255,255,255,0.08); }
-        .cf-panel-alt { background-color: #0F0A18; border: 1px solid rgba(255,255,255,0.06); }
-        .cf-gold { color: #E3B25C; }
-        .cf-badge { background-color: rgba(60,40,20,0.55); border: 1px solid rgba(227,178,92,0.4); color: #E3B25C; }
-        @keyframes cfFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        .cf-fade { animation: cfFade .4s ease-out both; }
-      `}</style>
-
+    <div className="min-h-screen w-full text-parchment">
       <div className="cf-bg min-h-screen">
         <Header
           authLoading={authLoading}
@@ -782,10 +793,9 @@ export default function CommandForge() {
             <ResultView
               cardData={cardData}
               cardDataStatus={cardDataStatus}
-              cardmarketCopied={cardmarketCopied}
-              cardmarketCopyError={cardmarketCopyError}
-              copyForCardmarket={copyForCardmarket}
-              copyNeededForCardmarket={copyNeededForCardmarket}
+              copied={copied}
+              copyDeck={copyDeck}
+              copyError={copyError}
               deck={deck}
               deckTotalPrice={deckTotalPrice}
               openAuthModal={openAuthModal}
@@ -815,10 +825,24 @@ export default function CommandForge() {
             />
           )}
 
+          {view === "shared" && (
+            <SharedDeckView
+              copied={copied}
+              copyDeck={copyDeck}
+              copyError={copyError}
+              reset={reset}
+              setPreviewCard={setPreviewCard}
+              sharedDeck={sharedDeck}
+            />
+          )}
+
           {view === "decks" && (
             <MyDecksView
-              cardmarketCopied={cardmarketCopied}
-              copyForCardmarket={copyForCardmarket}
+              shareStatus={shareStatus}
+              toggleShare={toggleShare}
+              copied={copied}
+              copyDeck={copyDeck}
+              copyError={copyError}
               accountDeleteError={accountDeleteError}
               accountDeleting={accountDeleting}
               decksLoading={decksLoading}
@@ -868,7 +892,17 @@ export default function CommandForge() {
       )}
 
       {previewCard && (
-        <CardPreviewModal previewCard={previewCard} priceSource={priceSource} setPreviewCard={setPreviewCard} />
+        <CardPreviewModal
+          previewCard={previewCard}
+          priceSource={priceSource}
+          setPreviewCard={setPreviewCard}
+          swapOptions={
+            previewCard.swapRole && deck
+              ? (deck.alternatives?.[previewCard.swapRole] || []).slice(0, 3).map((n) => cardData[n.toLowerCase()] || { name: n })
+              : []
+          }
+          onSwap={(newName) => swapCard(previewCard.swapRole, previewCard.name, newName)}
+        />
       )}
     </div>
   );

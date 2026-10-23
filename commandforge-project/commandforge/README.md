@@ -118,6 +118,11 @@ create policy "Users can update their own collection"
 
 Each row holds one person's cards as a list of names and quantities. Deleting an account deletes its collection too. Without this table, signed-in people see "Couldn't load the collection saved to your account"; signed-out visitors' collections are kept in their browser either way.
 
+### 2d. Let people share decks
+The **Share** button in **My Decks** makes a read-only link to a saved deck. It needs a `shared` column, a rule that lets people turn sharing on for their own decks, and a function that reads one shared deck by its link. In the **SQL Editor**, paste the contents of [`supabase/share-decks.sql`](supabase/share-decks.sql) and click **Run**.
+
+Shared decks are only ever read one at a time through that function, so nobody can list every shared deck, and the owner's account is never sent with it. Until this has been run, pressing **Share** shows "Couldn't change sharing for this deck."
+
 ### 3. (Recommended for easy testing) Turn off email confirmation
 By default, Supabase makes new users click a confirmation link in their email before they can sign in. For a small personal project this is usually more friction than it's worth:
 

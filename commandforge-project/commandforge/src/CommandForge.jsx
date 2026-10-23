@@ -6,6 +6,7 @@ import { buildDeck, NONLAND_TARGET } from "./lib/buildDeck";
 import { buildDeckFromCollection } from "./lib/buildFromCollection";
 import { parseCollectionText, fetchCollectionCards, mergeEntries, ownedCommanders, playableCount } from "./lib/collection";
 import { HOUSE_NAMES } from "./lib/colors";
+import { mapDeckRow, shareUrl, sharedDeckIdFromUrl } from "./lib/shareDeck";
 import { archidektList, cardmarketList, moxfieldList, neededList } from "./lib/exportDeck";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
@@ -18,6 +19,7 @@ import SetupView from "./views/SetupView";
 import ResultView from "./views/ResultView";
 import MyDecksView from "./views/MyDecksView";
 import CollectionView from "./views/CollectionView";
+import SharedDeckView from "./views/SharedDeckView";
 
 // Where a signed-out visitor's collection is kept.
 const LOCAL_COLLECTION_KEY = "cf-collection";
@@ -61,7 +63,11 @@ export default function CommandForge() {
   // AdSense is configured; does nothing otherwise.
   useEffect(() => loadAdSense(), []);
 
-  const [view, setView] = useState("setup");
+  // A share link (?deck=<id>) opens straight onto that deck.
+  const [sharedDeckId] = useState(() => sharedDeckIdFromUrl(window.location.href));
+  const [view, setView] = useState(sharedDeckId ? "shared" : "setup");
+  const [sharedDeck, setSharedDeck] = useState({ status: sharedDeckId ? "loading" : "idle", deck: null });
+  const [shareStatus, setShareStatus] = useState(null); // { id, state: "copied" | "error" }
   const [search, setSearch] = useState("");
   const [selectedCommander, setSelectedCommander] = useState(null);
   const [bracket, setBracket] = useState(null);
@@ -118,6 +124,22 @@ export default function CommandForge() {
   const [notFound, setNotFound] = useState([]);
   const [useCollection, setUseCollection] = useState(false);
   const [ownedOnly, setOwnedOnly] = useState(true);
+
+  useEffect(() => {
+    if (!sharedDeckId) return;
+    supabase.rpc("get_shared_deck", { deck_id: sharedDeckId }).then(({ data, error }) => {
+      const row = Array.isArray(data) ? data[0] : null;
+      setSharedDeck(error || !row ? { status: "missing", deck: null } : { status: "ready", deck: mapDeckRow(row) });
+    });
+  }, [sharedDeckId]);
+
+  // Leaving a shared deck drops ?deck= from the address bar, so a reload or
+  // a bookmark lands on the brew page rather than back on that deck.
+  useEffect(() => {
+    if (view !== "shared" && window.location.search.includes("deck=")) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [view]);
 
   // Track the Supabase auth session for the lifetime of the app.
   useEffect(() => {
@@ -284,21 +306,7 @@ export default function CommandForge() {
       .select("*")
       .order("created_at", { ascending: false });
     if (!error && data) {
-      setSavedDecks(
-        data.map((row) => ({
-          id: row.id,
-          deckName: row.deck_name,
-          commander: row.commander,
-          identity: row.identity,
-          source: row.source,
-          bracketName: row.bracket_name,
-          picks: row.picks,
-          nonbasics: row.nonbasics,
-          basics: row.basics,
-          priceSource: row.price_source,
-          cardData: row.card_data,
-        }))
-      );
+      setSavedDecks(data.map(mapDeckRow));
     }
     setDecksLoading(false);
   }
@@ -678,6 +686,28 @@ export default function CommandForge() {
     setPreviewCard(null);
   }
 
+  // Turns sharing on (and copies the link) or off for one of the person's
+  // saved decks.
+  async function toggleShare(d) {
+    const shared = !d.shared;
+    const { error } = await supabase.from("decks").update({ shared }).eq("id", d.id);
+    if (error) {
+      setShareStatus({ id: d.id, state: "error" });
+      return;
+    }
+    setSavedDecks((prev) => prev.map((x) => (x.id === d.id ? { ...x, shared } : x)));
+    if (!shared) {
+      setShareStatus({ id: d.id, state: "stopped" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl(d.id));
+      setShareStatus({ id: d.id, state: "copied" });
+    } catch {
+      setShareStatus({ id: d.id, state: "shared" });
+    }
+  }
+
   async function deleteDeck(id) {
     if (viewingSaved?.id === id) setViewingSaved(null);
     setSavedDecks((prev) => prev.filter((d) => d.id !== id)); // optimistic
@@ -795,8 +825,21 @@ export default function CommandForge() {
             />
           )}
 
+          {view === "shared" && (
+            <SharedDeckView
+              copied={copied}
+              copyDeck={copyDeck}
+              copyError={copyError}
+              reset={reset}
+              setPreviewCard={setPreviewCard}
+              sharedDeck={sharedDeck}
+            />
+          )}
+
           {view === "decks" && (
             <MyDecksView
+              shareStatus={shareStatus}
+              toggleShare={toggleShare}
               copied={copied}
               copyDeck={copyDeck}
               copyError={copyError}

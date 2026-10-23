@@ -3,6 +3,7 @@ import CardRow from "../components/CardRow";
 import ColorPips from "../components/ColorPips";
 import ExportButtons from "../components/ExportButtons";
 import { CAT_LABELS } from "../lib/buildDeck";
+import { shareUrl } from "../lib/shareDeck";
 
 export default function MyDecksView({
   accountDeleteError,
@@ -16,6 +17,8 @@ export default function MyDecksView({
   openAuthModal,
   savedDecks,
   session,
+  shareStatus,
+  toggleShare,
   setPreviewCard,
   setViewingSaved,
   viewingSaved,
@@ -72,6 +75,13 @@ export default function MyDecksView({
                   {viewingSaved?.id === d.id ? "Hide" : "View"}
                 </button>
                 <button
+                  onClick={() => toggleShare(d)}
+                  title={d.shared ? "Anyone with the link can see this deck" : "Make a read-only link anyone can open"}
+                  className="py-2 px-1 text-xs font-semibold text-parchment/70 hover:text-parchment underline underline-offset-2"
+                >
+                  {d.shared ? "Stop sharing" : "Share"}
+                </button>
+                <button
                   onClick={() => {
                     if (window.confirm(`Delete "${d.deckName}"? This can't be undone.`)) deleteDeck(d.id);
                   }}
@@ -81,6 +91,10 @@ export default function MyDecksView({
                 </button>
               </div>
             </div>
+
+            {shareStatus?.id === d.id && (
+              <ShareNote state={shareStatus.state} deckId={d.id} />
+            )}
 
             {viewingSaved?.id === d.id && (
               <div className="mt-4 pt-4 border-t border-white/10 space-y-3">
@@ -150,5 +164,20 @@ export default function MyDecksView({
         </div>
       )}
     </div>
+  );
+}
+
+function ShareNote({ state, deckId }) {
+  if (state === "error") {
+    return <p className="text-xs text-red-300/80 mt-2">Couldn't change sharing for this deck. Please try again.</p>;
+  }
+  if (state === "stopped") {
+    return <p className="text-xs text-parchment/50 mt-2">Sharing is off. The old link no longer opens this deck.</p>;
+  }
+  return (
+    <p className="text-xs text-parchment/60 mt-2 break-all">
+      {state === "copied" ? "Link copied. Anyone with it can see this deck, but not change it: " : "Anyone with this link can see the deck: "}
+      <a href={shareUrl(deckId)} className="cf-link">{shareUrl(deckId)}</a>
+    </p>
   );
 }

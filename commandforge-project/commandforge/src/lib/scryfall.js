@@ -105,8 +105,8 @@ export async function fetchCheapestPrintings(names, priceSource) {
    SCRYFALL — live card images + prices
    Uses the public /cards/collection endpoint (no API key
    required, CORS-enabled). Scryfall itself aggregates the
-   USD price from TCGPlayer and the EUR price from Cardmarket,
-   so this is how we surface "TCGPlayer" / "Cardmarket" pricing
+   USD price from TCGplayer and the EUR price from Cardmarket,
+   so this is how we surface "TCGplayer" / "Cardmarket" pricing
    without scraping either retailer directly (which isn't
    something a client-side app can or should do).
 --------------------------------------------------------- */

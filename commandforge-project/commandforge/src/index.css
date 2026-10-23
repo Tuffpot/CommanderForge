@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Brewhall's look: the deep ink, brass and lantern glow of the logo. Colours
+   live in tailwind.config.js; the shared pieces below keep every button,
+   field and panel looking like the same hand made them. */
+
 html, body, #root {
   height: 100%;
 }
@@ -10,4 +14,157 @@ html, body, #root {
    or when the installed app scrolls past the edge. */
 html, body {
   background-color: #0B0812;
+}
+
+body {
+  font-family: "Manrope", system-ui, sans-serif;
+  color: #F3EADB;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(227, 178, 92, 0.35);
+  color: #fff;
+}
+
+@layer components {
+  .cf-display {
+    font-family: "Fraunces", Georgia, serif;
+    font-optical-sizing: auto;
+    font-variation-settings: "SOFT" 50, "WONK" 0;
+    letter-spacing: -0.01em;
+  }
+  .cf-mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .cf-gold { color: theme("colors.brass.DEFAULT"); }
+
+  /* The page: a warm glow from the top, like light through the hall's arch,
+     over a faint paper grain so the dark isn't flat and digital. */
+  .cf-bg {
+    background-color: theme("colors.ink.DEFAULT");
+    background-image:
+      radial-gradient(ellipse 820px 420px at 50% -60px, rgba(227, 178, 92, 0.13), transparent 70%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 .9 0 0 0 0 .75 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .cf-panel {
+    background-color: theme("colors.ink.panel");
+    border: 1px solid rgba(243, 234, 219, 0.08);
+    box-shadow: inset 0 1px 0 rgba(246, 212, 142, 0.05), 0 12px 32px -20px rgba(0, 0, 0, 0.8);
+  }
+  .cf-panel-alt {
+    background-color: theme("colors.ink.deep");
+    border: 1px solid rgba(243, 234, 219, 0.06);
+  }
+
+  /* Small labels above a group: brass small caps rather than shouty
+     tracked-out uppercase. */
+  .cf-eyebrow {
+    font-family: "Fraunces", Georgia, serif;
+    font-variant-caps: all-small-caps;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: rgba(227, 178, 92, 0.85);
+  }
+
+  /* A numbered step heading on the brew page. */
+  .cf-step {
+    @apply flex items-center gap-3 mb-4;
+  }
+  .cf-step-num {
+    @apply cf-display w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0;
+    font-style: italic;
+    color: theme("colors.brass.DEFAULT");
+    border: 1px solid rgba(227, 178, 92, 0.45);
+  }
+  .cf-step-title {
+    @apply cf-display text-lg text-parchment;
+  }
+
+  /* An ornament rule with the four-point star from the logo's card. */
+  .cf-rule {
+    @apply flex items-center gap-3;
+    color: rgba(227, 178, 92, 0.6);
+  }
+  .cf-rule::before,
+  .cf-rule::after {
+    content: "";
+    @apply h-px flex-1;
+    background: linear-gradient(to var(--cf-rule-dir, right), transparent, rgba(227, 178, 92, 0.35));
+  }
+  .cf-rule::after { --cf-rule-dir: left; }
+
+  /* Buttons. One primary per screen; everything else is secondary or quiet. */
+  .cf-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-sm transition
+      disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass/60
+      focus-visible:ring-offset-2 focus-visible:ring-offset-ink;
+  }
+  .cf-btn-primary {
+    @apply cf-btn text-ink;
+    background: linear-gradient(180deg, #F6D48E 0%, #E3B25C 55%, #C9953F 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 18px -8px rgba(227, 178, 92, 0.6);
+  }
+  .cf-btn-primary:hover:not(:disabled) { filter: brightness(1.06); }
+  .cf-btn-primary:disabled {
+    background: rgba(243, 234, 219, 0.06);
+    box-shadow: none;
+    color: rgba(243, 234, 219, 0.3);
+  }
+  .cf-btn-secondary {
+    @apply cf-btn border border-brass/50 bg-brass/10 text-parchment hover:bg-brass/20
+      disabled:border-white/10 disabled:bg-white/5 disabled:text-white/30;
+  }
+  .cf-btn-quiet {
+    @apply cf-btn border border-white/15 bg-white/[0.03] text-parchment/80 hover:bg-white/[0.07] hover:text-parchment
+      disabled:opacity-40;
+  }
+  .cf-btn-danger {
+    @apply cf-btn border border-red-400/40 text-red-300/90 hover:bg-red-500/10 disabled:opacity-50;
+  }
+  .cf-link {
+    @apply text-brass underline decoration-brass/40 underline-offset-[3px] hover:decoration-brass;
+  }
+
+  .cf-field {
+    @apply w-full rounded-xl px-3 py-3 text-base sm:text-sm text-parchment outline-none transition
+      placeholder:text-parchment/35 focus:border-brass/60;
+    background-color: rgba(5, 3, 9, 0.5);
+    border: 1px solid rgba(243, 234, 219, 0.14);
+  }
+  .cf-field:focus { box-shadow: 0 0 0 3px rgba(227, 178, 92, 0.12); }
+
+  /* A tile you pick from a set: brackets, price sources. */
+  .cf-choice {
+    @apply rounded-xl border border-white/10 bg-black/25 transition hover:border-white/25;
+  }
+  .cf-choice[aria-pressed="true"] {
+    @apply border-brass/70 bg-brass/10;
+    box-shadow: inset 0 0 0 1px rgba(227, 178, 92, 0.25);
+  }
+
+  .cf-chip {
+    @apply text-xs px-2.5 py-1 rounded-full border border-white/15 text-parchment/60 transition
+      hover:text-parchment hover:border-brass/50;
+  }
+
+  .cf-switch {
+    @apply w-11 h-6 rounded-full shrink-0 flex items-center px-0.5 transition bg-white/15 justify-start;
+  }
+  .cf-switch[data-on="true"] { @apply bg-brass justify-end; }
+  .cf-switch::after {
+    content: "";
+    @apply w-5 h-5 rounded-full bg-parchment block shadow;
+  }
+
+  .cf-fade { animation: cfFade 0.4s ease-out both; }
+}
+
+@keyframes cfFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-fade { animation: none; }
 }

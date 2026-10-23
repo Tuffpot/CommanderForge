@@ -704,23 +704,7 @@ export default function CommandForge() {
   }
 
   return (
-    <div className="min-h-screen w-full text-white" style={{ fontFamily: "'Manrope', sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap');
-        .cf-display { font-family: 'Cinzel', serif; letter-spacing: 0.02em; }
-        .cf-mono { font-family: 'JetBrains Mono', monospace; }
-        .cf-bg {
-          background-color: #0B0812;
-          background-image: radial-gradient(ellipse 900px 500px at 50% 0%, rgba(88,58,120,0.45), transparent 70%);
-        }
-        .cf-panel { background-color: #150F20; border: 1px solid rgba(255,255,255,0.08); }
-        .cf-panel-alt { background-color: #0F0A18; border: 1px solid rgba(255,255,255,0.06); }
-        .cf-gold { color: #E3B25C; }
-        .cf-badge { background-color: rgba(60,40,20,0.55); border: 1px solid rgba(227,178,92,0.4); color: #E3B25C; }
-        @keyframes cfFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        .cf-fade { animation: cfFade .4s ease-out both; }
-      `}</style>
-
+    <div className="min-h-screen w-full text-parchment">
       <div className="cf-bg min-h-screen">
         <Header
           authLoading={authLoading}

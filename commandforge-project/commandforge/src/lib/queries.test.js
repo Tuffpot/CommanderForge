@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   guessArchetype, buildNameQuery, filterAndSortByName, buildColorQuery, normalizeThemeKey,
-  singularType, resolveThemeQuery, categoryQuery, nonbasicTarget, fixesFor, isFetchLand, limitFetchLands, ARCHETYPE_QUERIES,
+  singularType, resolveThemeQuery, categoryQuery, nonbasicTarget, fixesFor, isFetchLand, limitFetchLands, fetchLandLimit, ARCHETYPE_QUERIES,
 } from "./queries";
 
 describe("guessArchetype", () => {
@@ -139,8 +139,19 @@ describe("fetch lands", () => {
     expect([shock, tower].some(isFetchLand)).toBe(false);
   });
 
-  it("keeps only the first two fetches and every other land", () => {
-    expect(limitFetchLands([strand, shock, vista, tower, wilds]).map((l) => l.name))
+  it("keeps only the first few fetches and every other land", () => {
+    expect(limitFetchLands([strand, shock, vista, tower, wilds], 2).map((l) => l.name))
       .toEqual(["Flooded Strand", "Hallowed Fountain", "Prismatic Vista", "Command Tower"]);
+  });
+
+  it("allows more fetches at higher brackets and with more colours, and few on a budget", () => {
+    const b = (id) => ({ id });
+    expect(fetchLandLimit(["W"], b(5))).toBe(1);
+    expect(fetchLandLimit(["U", "R"], b(2))).toBe(2);
+    expect(fetchLandLimit(["U", "R", "G"], b(3))).toBe(3);
+    expect(fetchLandLimit(["U", "R", "G"], b(4))).toBe(5);
+    expect(fetchLandLimit(["W", "U", "B", "R", "G"], b(5))).toBe(10);
+    expect(fetchLandLimit(["W", "U", "B", "R", "G"], b(5), 100)).toBe(2);
+    expect(fetchLandLimit(["W", "U", "B", "R", "G"], b(5), 500)).toBe(10);
   });
 });

@@ -248,17 +248,31 @@ export function fixesFor(card, identity) {
 /* Lands that sacrifice themselves to find another: the true fetches,
    Prismatic Vista, Evolving Wilds and the like. Fetches are among the most
    played lands, so left alone they crowded the dual lands out of every
-   mana base. They thin the deck and turn on landfall, so a deck still runs
-   a couple, and the rest of the slots go to lands that make two colours. */
-export const FETCH_LAND_LIMIT = 2;
+   mana base.
+
+   How many real decks run, from EDHREC's average decks (Oct 2026):
+   budget lists run none or two cheap ones (Evolving Wilds, Terramorphic
+   Expanse), mid-price two- and three-colour lists run nought to three, and
+   only expensive or optimized lists run seven to ten, alongside shocks and
+   original duals. So the allowance grows with the bracket and the number of
+   land slots, and a tight budget keeps it at two. */
+// Below this budget a deck sticks to a couple of cheap fetches.
+const FETCH_BUDGET_THRESHOLD = 200;
+
+export function fetchLandLimit(identity, bracket, budget = null) {
+  if (identity.length <= 1) return 1;
+  const slots = nonbasicTarget(identity, bracket);
+  const byBracket = { 1: 1, 2: 2, 3: 3, 4: Math.round(slots * 0.3), 5: Math.round(slots * 0.4) }[bracket.id] ?? 2;
+  return budget != null && budget > 0 && budget < FETCH_BUDGET_THRESHOLD ? Math.min(byBracket, 2) : byBracket;
+}
 
 export function isFetchLand(card) {
   const text = (card.oracleText || card.oracle_text || "").toLowerCase();
   return text.includes("sacrifice") && /search your library for an? [^.]*(land|plains|island|swamp|mountain|forest)/.test(text);
 }
 
-// Keeps the first FETCH_LAND_LIMIT fetches in a list of lands, in order.
-export function limitFetchLands(lands, limit = FETCH_LAND_LIMIT) {
+// Keeps the first `limit` fetches in a list of lands, in order.
+export function limitFetchLands(lands, limit) {
   let left = limit;
   return lands.filter((land) => !isFetchLand(land) || left-- > 0);
 }

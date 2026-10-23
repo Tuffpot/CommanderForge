@@ -1,5 +1,5 @@
 import { BASIC_LAND } from "./colors";
-import { categoryQuery, nonbasicTarget, fixesFor, limitFetchLands } from "./queries";
+import { categoryQuery, nonbasicTarget, fixesFor, fetchLandLimit, limitFetchLands } from "./queries";
 import { scryfallSearchCards, mapScryfallCard, fetchScryfallData } from "./scryfall";
 import { popularityWeightedShuffle } from "./budget";
 import { NONLAND_TARGET, LAND_TARGET, checkCombos, summariseBracket } from "./buildDeck";
@@ -95,10 +95,11 @@ export async function buildDeckFromCollection(commander, style, bracket, ownedCa
   // Lands: fixing first in a multicolour deck, then the most played of the
   // rest, leaving room for a couple of basics of each colour.
   const multicolor = identity.length > 1;
-  // Only a couple of fetch lands, so dual lands fill the rest.
+  // Only as many fetch lands as real decks at this level run, so dual lands
+  // fill the rest.
   const landOrder = limitFetchLands(multicolor
     ? [...lands.filter((l) => fixesFor(l, identity)), ...lands.filter((l) => !fixesFor(l, identity))]
-    : lands);
+    : lands, fetchLandLimit(identity, bracket));
   const nonbasicCap = Math.max(0, Math.min(nonbasicTarget(identity, bracket), LAND_TARGET - 2 * identity.length));
   const nonbasics = landOrder.slice(0, nonbasicCap).map((l) => {
     usedNames.add(l.name.toLowerCase());

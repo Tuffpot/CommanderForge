@@ -1,5 +1,5 @@
 import { scryfallSearchCards } from "./scryfall";
-import { SITE_URL } from "./shareDeck";
+import { functionUrl } from "./shareDeck";
 
 /* The official Commander bracket rules (Wizards, last updated February 2026):
 
@@ -111,14 +111,9 @@ export function capPicks(picks, limits, gameChangers, { gameChangersUsed = 0, re
 
 /* Two-card combos in a deck, from Commander Spellbook. Returns pairs of
    card names; throws if Spellbook can't be reached. The request goes
-   through the site's own combos function (netlify/functions/combos.mjs);
-   the phone apps run from a local address, so they use the live site's. */
-const COMBOS_URL = typeof window !== "undefined" && /^https?:$/.test(window.location.protocol) && window.location.hostname !== "localhost"
-  ? "/.netlify/functions/combos"
-  : `${SITE_URL}/.netlify/functions/combos`;
-
+   through the site's own combos function (netlify/functions/combos.mjs). */
 export async function findTwoCardCombos(commanderName, names) {
-  const res = await fetch(COMBOS_URL, {
+  const res = await fetch(functionUrl("combos"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

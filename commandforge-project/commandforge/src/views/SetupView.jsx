@@ -253,7 +253,7 @@ export default function SetupView({
             <Lightbulb size={18} className="text-brass/70 shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-parchment">Inspired by real decks</p>
-              <p className="text-xs text-parchment/50 mt-0.5">Leans into cards that suit the way your commander is usually played.</p>
+              <p className="text-xs text-parchment/50 mt-0.5">Starts from the cards real decks with your commander run, from EDHREC.</p>
             </div>
           </div>
           <span className="cf-switch" data-on={inspired} />

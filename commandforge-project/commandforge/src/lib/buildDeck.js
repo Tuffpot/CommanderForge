@@ -1,10 +1,12 @@
 import { BASIC_LAND } from "./colors";
-import { categoryQuery, fetchLandLimit, limitFetchLands, nonbasicTarget } from "./queries";
+import { categoryQuery, fetchLandLimit, limitFetchLands, monoLandNames, nonbasicTarget, worksInMono } from "./queries";
 import { scryfallSearchCards, mapScryfallCard, fetchFixingLands, fetchCheapestPrintings, fetchScryfallData } from "./scryfall";
 import {
   priceOf, UNKNOWN_PRICE_ESTIMATE, cheapestFirst, spend, orderCandidates,
-  pickWithinBudget, AUTO_INCLUDES, pullStaples, upgradeWithinBudget,
+  pickWithinBudget, AUTO_INCLUDES, pullStaples, upgradeWithinBudget, trimToBudget, popularityWeightedShuffle,
 } from "./budget";
+import { dropIrrelevant } from "./relevance";
+import { edhrecFirst, edhrecRanks, fetchEdhrecCards } from "./edhrec";
 import { applyBracketLimits, bracketLimits, breakCombos, capPicks, fetchGameChangers, findTwoCardCombos, isExtraTurn } from "./bracketRules";
 
 export const BRACKETS = [
@@ -31,7 +33,8 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   const multicolor = identity.length > 1;
   const ownCommanderPrice = priceSource === "eur" ? commander.priceEur : commander.priceUsd;
   const limits = bracketLimits(bracket.id);
-  const [categoryResults, nonbasicRaw, fixingLands, commanderPrinting, fetchedGameChangers] = await Promise.all([
+  const monoLands = monoLandNames(identity);
+  const [categoryResults, nonbasicRaw, fixingLands, commanderPrinting, fetchedGameChangers, monoLandCards, edhrecCards] = await Promise.all([
     Promise.all(catKeys.map((cat) => scryfallSearchCards(categoryQuery(cat, identity, commander, style, themeQuery), priceSource).catch(() => []))),
     scryfallSearchCards(`f:commander id<=${identity.join("").toLowerCase() || "c"} t:land -t:basic`, priceSource).catch(() => []),
     multicolor ? fetchFixingLands(identity, priceSource) : Promise.resolve([]),
@@ -41,6 +44,11 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
       ? fetchCheapestPrintings([commander.name], priceSource).catch(() => ({}))
       : Promise.resolve({}),
     limits.gameChangers < Infinity ? fetchGameChangers(identity).catch(() => null) : Promise.resolve(new Set()),
+    monoLands.length
+      ? scryfallSearchCards(`f:commander (${monoLands.map((n) => `!"${n}"`).join(" or ")})`, priceSource).catch(() => [])
+      : Promise.resolve([]),
+    // "Inspired by real decks": what decks with this commander actually run.
+    style === "edhrec" ? fetchEdhrecCards(commander.name) : Promise.resolve(null),
   ]);
   Object.assign(cardData, commanderPrinting);
 
@@ -61,14 +69,45 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   });
   // Multicolour pools put the tiered fixing lands first, then whatever other
   // popular lands are left (utility lands like Reliquary Tower).
-  const fixingNames = new Set(fixingLands.map((c) => c.name.toLowerCase()));
+  // Mono-colour pools put the colour's staple lands first instead, in the
+  // order they're listed, and drop lands that only help other colours.
+  const monoOrder = new Map(monoLands.map((n, i) => [n.toLowerCase(), i]));
+  const firstLands = multicolor
+    ? fixingLands
+    : monoLandCards.map(mapScryfallCard).sort((a, b) => (monoOrder.get(a.name.toLowerCase()) ?? 99) - (monoOrder.get(b.name.toLowerCase()) ?? 99));
+  const firstNames = new Set(firstLands.map((c) => c.name.toLowerCase()));
   // Only as many fetch lands as real decks at this level run, so dual lands
   // fill the rest.
   const nonbasicPool = limitFetchLands([
-    ...fixingLands,
-    ...nonbasicRaw.map(mapScryfallCard).filter((c) => !fixingNames.has(c.name.toLowerCase())),
+    ...firstLands,
+    ...nonbasicRaw
+      .filter((c) => identity.length !== 1 || worksInMono(c, identity))
+      .map(mapScryfallCard)
+      .filter((c) => !firstNames.has(c.name.toLowerCase())),
   ], fetchLandLimit(identity, bracket, priceSource !== "none" ? budget : null));
   nonbasicPool.forEach((c) => { cardData[c.name.toLowerCase()] = c; });
+
+  /* With EDHREC's data, every role leads with the cards real decks with
+     this commander run, most played first. Played cards the role searches
+     didn't turn up (usually the commander's own synergy pieces) are looked
+     up and filed under Synergy, or with the lands. */
+  const edhrec = edhrecRanks(edhrecCards);
+  if (edhrec.size) {
+    const known = new Set([...nonbasicPool, ...Object.values(categoryCards).flat()].map((c) => c.name.toLowerCase()));
+    const missing = edhrecCards.map((c) => c.name).filter((n) => edhrec.has(n.toLowerCase()) && !known.has(n.toLowerCase()) && n.toLowerCase() !== commander.name.toLowerCase());
+    const found = missing.length ? await fetchCheapestPrintings(missing, priceSource).catch(() => ({})) : {};
+    Object.values(found).forEach((c) => {
+      cardData[c.name.toLowerCase()] = c;
+      if (/\bLand\b/.test(c.typeLine || "")) {
+        if (!/\bBasic\b/.test(c.typeLine || "")) nonbasicPool.push(c);
+      } else if (categoryCards.synergy) {
+        categoryCards.synergy.push(c);
+      }
+    });
+    catKeys.forEach((cat) => { categoryCards[cat] = edhrecFirst(categoryCards[cat], edhrec); });
+    nonbasicPool.splice(0, nonbasicPool.length, ...edhrecFirst(nonbasicPool, edhrec));
+  }
+  const fromEdhrec = (c) => edhrec.has(c.name.toLowerCase());
 
   // The bracket's rules on Game Changers, mass land denial and extra turns.
   // If the Game Changer search failed, Scryfall's own flag on each card
@@ -145,7 +184,14 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
 
   // Fixing lands keep their tier order (best cycles first) so the budget
   // check walks down from shocks and fetches to gain lands and guildgates.
-  const nonbasicCandidates = multicolor ? nonbasicRest : orderCandidates(nonbasicRest, cardData, priceSource, preferExpensive);
+  // A mono-colour deck's staple lands go first too, then the rest by the
+  // usual order.
+  const nonbasicCandidates = multicolor || edhrec.size
+    ? nonbasicRest
+    : [
+      ...nonbasicRest.filter((l) => firstNames.has(l.name.toLowerCase())),
+      ...orderCandidates(nonbasicRest.filter((l) => !firstNames.has(l.name.toLowerCase())), cardData, priceSource, preferExpensive),
+    ];
   const cheapNonbasics = cheapestFirst(nonbasicRest, cardData, priceSource);
   // Leave room for a couple of basics of each colour so fetch lands have
   // targets. Any nonland shortfall later only adds more basics.
@@ -166,7 +212,11 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
     const rawCandidates = categoryCards[cat].filter((c) => !usedNames.has(c.name.toLowerCase()));
     const { staples, rest } = pullStaples(rawCandidates, AUTO_INCLUDES[cat] || []);
 
-    const orderedRest = orderCandidates(rest, cardData, priceSource, preferExpensive);
+    // Cards real decks run come first (still with a little variety), then
+    // the usual order.
+    const orderedRest = edhrec.size
+      ? [...popularityWeightedShuffle(rest.filter(fromEdhrec)), ...orderCandidates(rest.filter((c) => !fromEdhrec(c)), cardData, priceSource, preferExpensive)]
+      : orderCandidates(rest, cardData, priceSource, preferExpensive);
     const cheapRest = cheapestFirst(rest, cardData, priceSource);
     const remainingTarget = Math.max(0, recipe[cat] - staples.length);
     const filled = pickWithinBudget(orderedRest, remainingTarget, cardData, priceSource, budgetState, cheapRest);
@@ -187,25 +237,34 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   // cards instead of leaving it unspent.
   upgradeWithinBudget(picks, categoryCards, usedNames, cardData, priceSource, budgetState);
 
-  // Then hold the deck to its Game Changer and extra-turn allowance. A card
-  // over the limit is swapped for the next one in its role, and under a
-  // budget only for one that costs no more.
-  const capped = capPicks({ lands: nonbasicsChosen, ...picks }, limits, gameChangers, {
-    gameChangersUsed,
-    replacementsFor: (role, card) => {
-      const pool = role === "lands" ? nonbasicPool : categoryCards[role];
-      if (!budgetActive) return pool;
-      const ceiling = priceFor(card);
-      return [...pool.filter((c) => priceFor(c) <= ceiling), ...cheapestFirst(pool, cardData, priceSource)];
-    },
-  });
-  capped.swaps.forEach(({ from, to }) => {
+  // Replacements for a card swapped out after picking: the next in its role,
+  // and under a budget one that costs no more where there is one.
+  const replacementsFor = (role, card) => {
+    const pool = (role === "lands" ? nonbasicPool : categoryCards[role]) || [];
+    if (!budgetActive) return pool;
+    const ceiling = priceFor(card);
+    return [...pool.filter((c) => priceFor(c) <= ceiling), ...cheapestFirst(pool, cardData, priceSource)];
+  };
+  const noteSwaps = (swaps) => swaps.forEach(({ from, to }) => {
     usedNames.delete(from.name.toLowerCase());
     if (to) usedNames.add(to.name.toLowerCase());
     if (budgetActive) budgetState.remaining += priceFor(from) - (to ? priceFor(to) : 0);
   });
+
+  // Then hold the deck to its Game Changer and extra-turn allowance.
+  const capped = capPicks({ lands: nonbasicsChosen, ...picks }, limits, gameChangers, { gameChangersUsed, replacementsFor });
+  noteSwaps(capped.swaps);
   const { lands: cappedLands, ...cappedPicks } = capped.picks;
   Object.assign(picks, cappedPicks);
+
+  // And swap out payoffs the deck can't use, like Mystic Forge in a deck
+  // with a handful of artifacts.
+  const uncapped = (c) => !gameChangers.has(c.name.toLowerCase()) && !isExtraTurn(c);
+  // Cards real decks with this commander run have already earned their place.
+  const relevant = dropIrrelevant(picks, commander, cardData, replacementsFor, uncapped, [themeQuery, commander.archetype].filter(Boolean).join("\n"), fromEdhrec);
+  noteSwaps(relevant.swaps);
+  Object.assign(picks, relevant.picks);
+  const fitsDeck = (c) => uncapped(c) && relevant.fits(cardData[c.name.toLowerCase()] || c);
   nonlandTotal = Object.values(picks).reduce((s, l) => s + l.length, 0);
 
   const deficit = NONLAND_TARGET - nonlandTotal;
@@ -246,12 +305,28 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   }
 
   // Brackets 1 to 3 allow no two-card combos: swap a card out of any the
-  // deck ended up with.
-  // Replacements skip capped cards so a swap can't push the deck over.
+  // deck ended up with. Replacements skip capped and off-theme cards.
   const comboCheck = await checkCombos(limits, commander, picks, nonbasics, (cat) =>
-    categoryCards[cat].filter((c) => !gameChangers.has(c.name.toLowerCase()) && !isExtraTurn(c)).map((c) => c.name)
+    categoryCards[cat].filter(fitsDeck).map((c) => c.name)
   );
   Object.assign(picks, comboCheck.picks);
+
+  // Prices settle only now (guessed prices filled in, swaps made), so make
+  // sure the deck still fits the budget, down to the penny.
+  // A commander that costs more than the whole budget already means the
+  // cheapest build, so there's nothing left to trim.
+  if (budgetActive && commanderPrice < budget) {
+    const { lands, ...trimmed } = trimToBudget({
+      picks: { lands: nonbasics, ...picks },
+      poolFor: (role) => (role === "lands" ? nonbasicPool : categoryCards[role]) || [],
+      limit: deckBudget,
+      cardData,
+      priceSource,
+      allowed: fitsDeck,
+    });
+    Object.assign(picks, trimmed);
+    nonbasics.splice(0, nonbasics.length, ...lands.map((l) => ({ name: l.name, qty: 1 })));
+  }
 
   // The next-best cards for each role that didn't make the deck, so the
   // result screen can offer a swap.

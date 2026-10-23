@@ -32,7 +32,7 @@ describe("App sign-in link", () => {
   });
 
   it("ignores other links", () => {
-    expect(parseOAuthCallback("https://commanderforge.co.uk/#access_token=abc")).toBeNull();
+    expect(parseOAuthCallback("https://brewhall.co.uk/#access_token=abc")).toBeNull();
     expect(parseOAuthCallback(undefined)).toBeNull();
   });
 });

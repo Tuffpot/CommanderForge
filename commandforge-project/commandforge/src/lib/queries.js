@@ -232,11 +232,47 @@ export function nonbasicTarget(identity, bracket) {
 }
 
 // Keeps a land only if it really fixes for this deck: it makes at least two
-// of the deck's colours, or it fetches a basic type the deck plays.
+// of the deck's colours, or it fetches any basic or two basic types the deck
+// plays. A fetch that finds only one of the deck's types (Flooded Strand in a
+// blue-red deck) is little better than that basic, so it doesn't count.
 export function fixesFor(card, identity) {
   const made = (card.produced_mana || []).filter((c) => identity.includes(c));
   if (made.length >= 2) return true;
   if ((card.produced_mana || []).length) return false;
   const text = (card.oracle_text || card.card_faces?.map((f) => f.oracle_text).join("\n") || "").toLowerCase();
-  return text.includes("basic land") || identity.some((c) => text.includes(BASIC_LAND[c].toLowerCase()));
+  if (text.includes("basic land")) return true;
+  const types = identity.filter((c) => text.includes(BASIC_LAND[c].toLowerCase()));
+  return types.length >= Math.min(2, identity.length);
+}
+
+/* Lands that sacrifice themselves to find another: the true fetches,
+   Prismatic Vista, Evolving Wilds and the like. Fetches are among the most
+   played lands, so left alone they crowded the dual lands out of every
+   mana base.
+
+   How many real decks run, from EDHREC's average decks (Oct 2026):
+   budget lists run none or two cheap ones (Evolving Wilds, Terramorphic
+   Expanse), mid-price two- and three-colour lists run nought to three, and
+   only expensive or optimized lists run seven to ten, alongside shocks and
+   original duals. So the allowance grows with the bracket and the number of
+   land slots, and a tight budget keeps it at two. */
+// Below this budget a deck sticks to a couple of cheap fetches.
+const FETCH_BUDGET_THRESHOLD = 200;
+
+export function fetchLandLimit(identity, bracket, budget = null) {
+  if (identity.length <= 1) return 1;
+  const slots = nonbasicTarget(identity, bracket);
+  const byBracket = { 1: 1, 2: 2, 3: 3, 4: Math.round(slots * 0.3), 5: Math.round(slots * 0.4) }[bracket.id] ?? 2;
+  return budget != null && budget > 0 && budget < FETCH_BUDGET_THRESHOLD ? Math.min(byBracket, 2) : byBracket;
+}
+
+export function isFetchLand(card) {
+  const text = (card.oracleText || card.oracle_text || "").toLowerCase();
+  return text.includes("sacrifice") && /search your library for an? [^.]*(land|plains|island|swamp|mountain|forest)/.test(text);
+}
+
+// Keeps the first `limit` fetches in a list of lands, in order.
+export function limitFetchLands(lands, limit) {
+  let left = limit;
+  return lands.filter((land) => !isFetchLand(land) || left-- > 0);
 }

@@ -1,5 +1,5 @@
 import { BASIC_LAND } from "./colors";
-import { categoryQuery, nonbasicTarget } from "./queries";
+import { categoryQuery, fetchLandLimit, limitFetchLands, nonbasicTarget } from "./queries";
 import { scryfallSearchCards, mapScryfallCard, fetchFixingLands, fetchCheapestPrintings, fetchScryfallData } from "./scryfall";
 import {
   priceOf, UNKNOWN_PRICE_ESTIMATE, cheapestFirst, spend, orderCandidates,
@@ -62,10 +62,12 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
   // Multicolour pools put the tiered fixing lands first, then whatever other
   // popular lands are left (utility lands like Reliquary Tower).
   const fixingNames = new Set(fixingLands.map((c) => c.name.toLowerCase()));
-  const nonbasicPool = [
+  // Only as many fetch lands as real decks at this level run, so dual lands
+  // fill the rest.
+  const nonbasicPool = limitFetchLands([
     ...fixingLands,
     ...nonbasicRaw.map(mapScryfallCard).filter((c) => !fixingNames.has(c.name.toLowerCase())),
-  ];
+  ], fetchLandLimit(identity, bracket, priceSource !== "none" ? budget : null));
   nonbasicPool.forEach((c) => { cardData[c.name.toLowerCase()] = c; });
 
   // The bracket's rules on Game Changers, mass land denial and extra turns.

@@ -6,6 +6,7 @@ import { buildDeck, NONLAND_TARGET } from "./lib/buildDeck";
 import { buildDeckFromCollection } from "./lib/buildFromCollection";
 import { parseCollectionText, fetchCollectionCards, mergeEntries, ownedCommanders, playableCount } from "./lib/collection";
 import { HOUSE_NAMES } from "./lib/colors";
+import { archidektList, cardmarketList, moxfieldList, neededList } from "./lib/exportDeck";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import { loadAdSense } from "./lib/ads";
@@ -87,8 +88,8 @@ export default function CommandForge() {
   const [colorMatchLoading, setColorMatchLoading] = useState(false);
   const [colorMatchError, setColorMatchError] = useState(false);
   const [randomizeError, setRandomizeError] = useState(false);
-  const [cardmarketCopied, setCardmarketCopied] = useState(false);
-  const [cardmarketCopyError, setCardmarketCopyError] = useState(false);
+  const [copied, setCopied] = useState(null);
+  const [copyError, setCopyError] = useState(null);
 
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -536,6 +537,7 @@ export default function CommandForge() {
         suggestions: built.suggestions || {},
         missingCount: built.missingCount || 0,
         picks: built.picks,
+        alternatives: built.alternatives || {},
         nonbasics: built.nonbasics,
         basics: built.basics,
       });
@@ -642,43 +644,38 @@ export default function CommandForge() {
     setDeckName("");
   }
 
-  // Cardmarket's wants-list importer accepts plain "<quantity> <card name>"
-  // lines pasted straight in — confirmed via their own help docs. Basics are
-  // left out since nobody actually needs to buy Plains/Islands.
-  function cardmarketList(commanderName, picks, nonbasics) {
-    const lines = [`1 ${commanderName}`];
-    Object.values(picks).flat().forEach((c) => lines.push(`1 ${c.name}`));
-    nonbasics.forEach((l) => lines.push(`${l.qty} ${l.name}`));
-    return lines.join("\n");
-  }
-
-  // For a collection build: only the cards the person doesn't own yet,
-  // plus the suggested ones for roles the collection is short on.
-  function neededList(d) {
-    const lines = [];
-    if (!d.commanderOwned) lines.push(`1 ${d.commander.name}`);
-    Object.values(d.picks).flat().filter((c) => c.missing).forEach((c) => lines.push(`1 ${c.name}`));
-    Object.values(d.suggestions || {}).flat().forEach((name) => lines.push(`1 ${name}`));
-    return lines.join("\n");
-  }
-
-  async function copyForCardmarket(commanderName, picks, nonbasics) {
-    await copyText(cardmarketList(commanderName, picks, nonbasics));
-  }
-
-  async function copyNeededForCardmarket(d) {
-    await copyText(neededList(d));
-  }
-
-  async function copyText(text) {
+  // Copies a deck in the text format another site imports. `target` is
+  // "moxfield", "archidekt", "cardmarket" or "needed" (a collection build's
+  // missing cards), and is what the button that was pressed shows as copied.
+  async function copyDeck(target, d) {
+    const commanderName = typeof d.commander === "string" ? d.commander : d.commander.name;
+    const text =
+      target === "moxfield" ? moxfieldList(commanderName, d.picks, d.nonbasics, d.basics)
+      : target === "archidekt" ? archidektList(commanderName, d.picks, d.nonbasics, d.basics)
+      : target === "needed" ? neededList(d)
+      : cardmarketList(commanderName, d.picks, d.nonbasics);
     try {
       await navigator.clipboard.writeText(text);
-      setCardmarketCopied(true);
-      setTimeout(() => setCardmarketCopied(false), 2000);
+      setCopyError(null);
+      setCopied(target);
+      setTimeout(() => setCopied((c) => (c === target ? null : c)), 2500);
     } catch {
-      setCardmarketCopyError(true);
-      setTimeout(() => setCardmarketCopyError(false), 2500);
+      setCopyError(target);
+      setTimeout(() => setCopyError((c) => (c === target ? null : c)), 3000);
     }
+  }
+
+  // Swaps one spell in the built deck for another in the same role. The card
+  // swapped out goes back to the front of that role's alternatives so the
+  // swap can be undone.
+  function swapCard(cat, oldName, newName) {
+    setDeck((d) => {
+      if (!d) return d;
+      const picks = { ...d.picks, [cat]: d.picks[cat].map((c) => (c.name === oldName ? { name: newName } : c)) };
+      const alts = (d.alternatives?.[cat] || []).filter((n) => n !== newName);
+      return { ...d, picks, alternatives: { ...d.alternatives, [cat]: [oldName, ...alts] } };
+    });
+    setPreviewCard(null);
   }
 
   async function deleteDeck(id) {
@@ -766,10 +763,9 @@ export default function CommandForge() {
             <ResultView
               cardData={cardData}
               cardDataStatus={cardDataStatus}
-              cardmarketCopied={cardmarketCopied}
-              cardmarketCopyError={cardmarketCopyError}
-              copyForCardmarket={copyForCardmarket}
-              copyNeededForCardmarket={copyNeededForCardmarket}
+              copied={copied}
+              copyDeck={copyDeck}
+              copyError={copyError}
               deck={deck}
               deckTotalPrice={deckTotalPrice}
               openAuthModal={openAuthModal}
@@ -801,8 +797,9 @@ export default function CommandForge() {
 
           {view === "decks" && (
             <MyDecksView
-              cardmarketCopied={cardmarketCopied}
-              copyForCardmarket={copyForCardmarket}
+              copied={copied}
+              copyDeck={copyDeck}
+              copyError={copyError}
               accountDeleteError={accountDeleteError}
               accountDeleting={accountDeleting}
               decksLoading={decksLoading}
@@ -852,7 +849,17 @@ export default function CommandForge() {
       )}
 
       {previewCard && (
-        <CardPreviewModal previewCard={previewCard} priceSource={priceSource} setPreviewCard={setPreviewCard} />
+        <CardPreviewModal
+          previewCard={previewCard}
+          priceSource={priceSource}
+          setPreviewCard={setPreviewCard}
+          swapOptions={
+            previewCard.swapRole && deck
+              ? (deck.alternatives?.[previewCard.swapRole] || []).slice(0, 3).map((n) => cardData[n.toLowerCase()] || { name: n })
+              : []
+          }
+          onSwap={(newName) => swapCard(previewCard.swapRole, previewCard.name, newName)}
+        />
       )}
     </div>
   );

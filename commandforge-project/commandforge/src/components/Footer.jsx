@@ -13,6 +13,9 @@ export default function Footer() {
         <a href="mailto:hello@brewhall.co.uk" className="cf-link">hello@brewhall.co.uk</a>
       </p>
       <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-parchment/50 mb-4">
+        <a href="/faq.html" className="hover:text-parchment/80 underline-offset-2 hover:underline">
+          Questions and answers
+        </a>
         <a href="/privacy.html" className="hover:text-parchment/80 underline-offset-2 hover:underline">
           Privacy &amp; cookies
         </a>

@@ -65,6 +65,9 @@ export function mapScryfallCard(card) {
     priceEur: card.prices?.eur || card.prices?.eur_foil || null,
     scryfallUri: card.scryfall_uri || null,
     oracleText,
+    // For the mana curve and card-type breakdown on the result screen.
+    cmc: typeof card.cmc === "number" ? card.cmc : null,
+    typeLine: card.card_faces?.[0]?.type_line || card.type_line || "",
   };
 }
 
@@ -125,17 +128,7 @@ export async function fetchScryfallData(names) {
     if (!res.ok) throw new Error(`Scryfall responded ${res.status}`);
     const json = await res.json();
     (json.data || []).forEach((card) => {
-      const faceImages = card.image_uris || card.card_faces?.[0]?.image_uris || null;
-      const oracleText = card.oracle_text || card.card_faces?.map((f) => f.oracle_text).filter(Boolean).join("\n\n") || null;
-      result[card.name.toLowerCase()] = {
-        name: card.name,
-        imageSmall: faceImages?.small || null,
-        imageLarge: faceImages?.large || faceImages?.png || null,
-        priceUsd: card.prices?.usd || card.prices?.usd_foil || null,
-        priceEur: card.prices?.eur || card.prices?.eur_foil || null,
-        scryfallUri: card.scryfall_uri || null,
-        oracleText,
-      };
+      result[card.name.toLowerCase()] = mapScryfallCard(card);
     });
   }
   return result;

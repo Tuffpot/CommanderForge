@@ -1,8 +1,10 @@
-import { Check, ChevronLeft, ClipboardCopy, Loader2, Save } from "lucide-react";
+import { ChevronLeft, Loader2, Save } from "lucide-react";
 import { CommanderArt } from "../components/CardImages";
 import AdSlot from "../components/AdSlot";
 import CardRow from "../components/CardRow";
+import ExportButtons from "../components/ExportButtons";
 import ColorPips from "../components/ColorPips";
+import DeckStats from "../components/DeckStats";
 import { formatPrice, priceOf } from "../lib/budget";
 import { CAT_LABELS } from "../lib/buildDeck";
 import { describeDeck } from "../lib/describeDeck";
@@ -28,10 +30,9 @@ function CategoryHeading({ label, count }) {
 export default function ResultView({
   cardData,
   cardDataStatus,
-  cardmarketCopied,
-  cardmarketCopyError,
-  copyForCardmarket,
-  copyNeededForCardmarket,
+  copied,
+  copyDeck,
+  copyError,
   deck,
   deckTotalPrice,
   openAuthModal,
@@ -148,6 +149,8 @@ export default function ResultView({
         </div>
       )}
 
+      {cardDataStatus === "done" && <DeckStats picks={deck.picks} cardData={cardData} />}
+
       <div className="space-y-3 mb-6">
         {Object.entries(deck.picks).map(([cat, cards]) =>
           cards.length ? (
@@ -162,7 +165,9 @@ export default function ResultView({
                     qty={1}
                     cardData={cardData}
                     priceSource={priceSource}
-                    onPreview={setPreviewCard}
+                    onPreview={(card) =>
+                      setPreviewCard(deck.alternatives?.[cat]?.length ? { ...card, swapRole: cat } : card)
+                    }
                   />
                 ))}
               </div>
@@ -237,27 +242,15 @@ export default function ResultView({
         </button>
       </div>
 
-      <button
-        onClick={() =>
-          deck.fromCollection
-            ? copyNeededForCardmarket(deck)
-            : copyForCardmarket(deck.commander.name, deck.picks, deck.nonbasics)
-        }
-        disabled={deck.fromCollection && neededCount(deck) + suggestionCount(deck) === 0}
-        className="w-full py-3 cf-btn-quiet"
-      >
-        {cardmarketCopied ? (
-          <>
-            <Check size={15} className="text-green-400" /> Copied. Paste it straight into a Cardmarket wants list.
-          </>
-        ) : cardmarketCopyError ? (
-          <>Couldn't copy. Your browser may be blocking clipboard access.</>
-        ) : (
-          <>
-            <ClipboardCopy size={15} /> {deck.fromCollection ? "Copy the cards you need for Cardmarket" : "Copy for a Cardmarket wants list"}
-          </>
-        )}
-      </button>
+      <div className="cf-panel rounded-2xl p-4 sm:p-5 mt-3">
+        <ExportButtons
+          copied={copied}
+          copyDeck={copyDeck}
+          copyError={copyError}
+          deck={deck}
+          needed={deck.fromCollection ? neededCount(deck) + suggestionCount(deck) : null}
+        />
+      </div>
     </div>
   );
 }

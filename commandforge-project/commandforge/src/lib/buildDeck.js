@@ -14,6 +14,7 @@ export const BRACKETS = [
   { id: 5, name: "cEDH", tag: "Competitive", recipe: { ramp: 14, draw: 6, removal: 12, protection: 6, synergy: 10, wincon: 5, utility: 9 } },
 ];
 export const NONLAND_TARGET = 62;
+const ALTERNATIVES_PER_ROLE = 12;
 export const LAND_TARGET = 99 - NONLAND_TARGET;
 
 export async function buildDeck(commander, style, bracket, opts = {}) {
@@ -195,7 +196,15 @@ export async function buildDeck(commander, style, bracket, opts = {}) {
     }
   }
 
-  return { picks, nonbasics, basics, budgetActive, budgetRemaining: budgetState.remaining, cardData, shortfall: Math.max(0, deficit) };
+  // The next-best cards for each role that didn't make the deck, so the
+  // result screen can offer a swap.
+  const inDeck = new Set([commander.name, ...Object.values(picks).flat().map((c) => c.name), ...nonbasics.map((l) => l.name)].map((n) => n.toLowerCase()));
+  const alternatives = {};
+  catKeys.forEach((cat) => {
+    alternatives[cat] = categoryCards[cat].filter((c) => !inDeck.has(c.name.toLowerCase())).slice(0, ALTERNATIVES_PER_ROLE).map((c) => c.name);
+  });
+
+  return { picks, nonbasics, basics, alternatives, budgetActive, budgetRemaining: budgetState.remaining, cardData, shortfall: Math.max(0, deficit) };
 }
 
 export const CAT_LABELS = {

@@ -1,13 +1,15 @@
-import { Check, ClipboardCopy, Loader2, Trash2, User } from "lucide-react";
+import { Loader2, Trash2, User } from "lucide-react";
 import CardRow from "../components/CardRow";
 import ColorPips from "../components/ColorPips";
+import ExportButtons from "../components/ExportButtons";
 import { CAT_LABELS } from "../lib/buildDeck";
 
 export default function MyDecksView({
   accountDeleteError,
   accountDeleting,
-  cardmarketCopied,
-  copyForCardmarket,
+  copied,
+  copyDeck,
+  copyError,
   decksLoading,
   deleteAccount,
   deleteDeck,
@@ -119,20 +121,7 @@ export default function MyDecksView({
                     ))}
                   </div>
                 </div>
-                <button
-                  onClick={() => copyForCardmarket(d.commander, d.picks, d.nonbasics)}
-                  className="w-full py-2.5 cf-btn-quiet"
-                >
-                  {cardmarketCopied ? (
-                    <>
-                      <Check size={13} className="text-green-400" /> Copied
-                    </>
-                  ) : (
-                    <>
-                      <ClipboardCopy size={13} /> Copy for a Cardmarket wants list
-                    </>
-                  )}
-                </button>
+                <ExportButtons compact copied={copied} copyDeck={copyDeck} copyError={copyError} deck={d} />
               </div>
             )}
           </div>

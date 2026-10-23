@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#0B0812" />
+    <meta name="description" content="How Brewhall builds Commander decks: brackets, budgets, prices, collections, exporting to Moxfield and Archidekt, and more." />
+    <title>Questions and answers · Brewhall</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Manrope:wght@400;600&display=swap" />
+    <style>
+      body {
+        margin: 0;
+        background: #0b0812;
+        color: rgba(243, 234, 219, 0.82);
+        font: 15px/1.65 "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      main { max-width: 720px; margin: 0 auto; padding: 40px 20px 64px; }
+      h1, h2 { color: #f3eadb; line-height: 1.25; font-family: "Fraunces", Georgia, serif; font-weight: 600; }
+      h1 { font-size: 34px; margin: 0 0 4px; }
+      h2 { font-size: 18px; margin: 32px 0 8px; color: #e3b25c; }
+      a { color: #e3b25c; }
+      .muted { color: rgba(255, 255, 255, 0.5); font-size: 13px; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th, td { text-align: left; vertical-align: top; padding: 8px 10px 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+      th { color: #fff; }
+      h3 { color: #f3eadb; font-size: 16px; margin: 22px 0 4px; }
+      nav.toc { columns: 2; column-gap: 32px; font-size: 14px; margin: 20px 0 8px; }
+      nav.toc a { display: block; padding: 2px 0; }
+      @media (max-width: 560px) { nav.toc { columns: 1; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="/">← Back to Brewhall</a></p>
+      <h1>Questions and answers</h1>
+      <p class="muted">How Brewhall builds a deck, and what to do with it afterwards.</p>
+
+      <nav class="toc" aria-label="On this page">
+        <a href="#what">What is Brewhall?</a>
+        <a href="#ai">Is it AI?</a>
+        <a href="#legal">Are the decks legal?</a>
+        <a href="#brackets">What do the brackets change?</a>
+        <a href="#prices">Where do prices come from?</a>
+        <a href="#budget">How does the budget work?</a>
+        <a href="#collection">Can it use my own cards?</a>
+        <a href="#swap">Can I change cards?</a>
+        <a href="#export">Can I take a deck to Moxfield or Archidekt?</a>
+        <a href="#account">Do I need an account?</a>
+        <a href="#contact">Something looks wrong</a>
+      </nav>
+
+      <h2 id="what">What is Brewhall?</h2>
+      <p>
+        Brewhall is a free Commander deck builder. You pick a commander and a power bracket, and it puts
+        together a full 100-card deck: your commander, 62 spells and 37 lands. You can also let it pick a
+        random commander by colour, guild or theme. It's a small, independent project run from the UK.
+      </p>
+
+      <h2 id="ai">Is it AI?</h2>
+      <p>
+        No. Brewhall works from rules, not a language model. For each role a deck needs (ramp, card draw,
+        removal, protection, synergy, win conditions and utility) it searches
+        <a href="https://scryfall.com">Scryfall</a> for cards that fit your commander's colours, ranks them by
+        how often Commander players run them, and takes the number that your bracket calls for. That's why it
+        never invents a card or puts in two copies of the same one.
+      </p>
+
+      <h2 id="legal">Are the decks legal?</h2>
+      <p>
+        Every card is legal in Commander according to Scryfall, fits your commander's colour identity, and
+        appears once (basic lands aside). If Scryfall can't return enough cards for a narrow theme or colour
+        pair, Brewhall fills the gap with extra basic lands and tells you, rather than leaving the deck short.
+      </p>
+
+      <h2 id="brackets">What do the brackets change?</h2>
+      <p>
+        Brewhall uses the five Commander brackets to decide the mix of the deck. Higher brackets get more ramp,
+        removal and protection, and fewer slots for fun or flavourful cards.
+      </p>
+      <table>
+        <tr><th>Bracket</th><th>Ramp</th><th>Removal</th><th>Win conditions</th></tr>
+        <tr><td>1. Exhibition</td><td>6</td><td>6</td><td>1</td></tr>
+        <tr><td>2. Core</td><td>8</td><td>8</td><td>3</td></tr>
+        <tr><td>3. Upgraded</td><td>10</td><td>10</td><td>5</td></tr>
+        <tr><td>4. Optimized</td><td>12</td><td>11</td><td>5</td></tr>
+        <tr><td>5. cEDH</td><td>14</td><td>12</td><td>5</td></tr>
+      </table>
+      <p>
+        Brewhall doesn't yet count Game Changers or check for two-card combos the way the official bracket
+        guidelines do. If your group plays strictly by those rules, look over a bracket 1 to 3 deck before
+        game night.
+      </p>
+
+      <h2 id="prices">Where do prices come from?</h2>
+      <p>
+        From Scryfall, which takes dollar prices from TCGplayer and euro prices from Cardmarket. Choose the one
+        you buy from on the brew page. Basic lands
+        aren't priced or counted, since most players already have plenty.
+      </p>
+
+      <h2 id="budget">How does the budget work?</h2>
+      <p>
+        Type a total and Brewhall spreads it across the deck. No single card takes more than about a fifth of
+        it, and once every slot is filled it spends what's left on stronger cards. If the deck still ends up
+        over, the results page says by how much and why: usually a commander that costs more than the budget on
+        its own. Leave the budget blank and it reaches for the stronger, pricier staples.
+      </p>
+
+      <h2 id="collection">Can it use my own cards?</h2>
+      <p>
+        Yes. Open <strong>Collection</strong> and import a CSV export from ManaBox, Moxfield or a similar site,
+        or paste a list with one card per line, like <code>1 Sol Ring</code>. Then turn on
+        <strong>Build from my collection</strong> on the brew page. Decks use only cards you own where they can.
+        Any card you'd still need is marked NEED, and a short list suggests a few pickups for the roles your
+        collection is light on.
+      </p>
+
+      <h2 id="swap">Can I change cards?</h2>
+      <p>
+        Tap any spell in a fresh deck and Brewhall offers three alternatives that fill the same role. Pick one to
+        swap it in. The card you swapped out goes back on the list, so you can change your mind.
+      </p>
+
+      <h2 id="export">Can I take a deck to Moxfield or Archidekt?</h2>
+      <p>
+        Yes. Under every deck there are buttons to copy it for Moxfield, Archidekt or a Cardmarket wants list.
+      </p>
+      <h3>Moxfield</h3>
+      <p>Make a new Commander deck, choose <strong>Import</strong>, paste, and pick your commander in the import dialog.</p>
+      <h3>Archidekt</h3>
+      <p>Make a new deck, choose <strong>Import</strong>, and paste. Your commander goes into the command zone and the cards arrive sorted into the same roles as on Brewhall.</p>
+      <h3>Cardmarket</h3>
+      <p>Paste into a new wants list to see what the cards cost from sellers near you. For a collection build, the button copies only the cards you don't own.</p>
+
+      <h2 id="account">Do I need an account?</h2>
+      <p>
+        No. Building, exporting and importing a collection all work without one. A free account lets you save
+        decks and keep your collection on any device you sign in on. The
+        <a href="/privacy.html">privacy page</a> explains what's stored and how to delete it.
+      </p>
+
+      <h2 id="contact">Something looks wrong</h2>
+      <p>
+        If a deck comes out strange or something breaks, email
+        <a href="mailto:hello@brewhall.co.uk">hello@brewhall.co.uk</a> with the commander and bracket you used.
+      </p>
+
+      <p class="muted" style="margin-top: 40px">
+        Brewhall is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed
+        by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast
+        LLC. Card data and images from Scryfall.
+      </p>
+    </main>
+  </body>
+</html>

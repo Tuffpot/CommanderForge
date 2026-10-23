@@ -29,7 +29,7 @@ const HOW_IT_WORKS = [
   },
   {
     title: "Built from what you own",
-    body: "Import a ManaBox or Moxfield export and Brewhall builds only from your cards, then tells you which few pickups would round the deck out. Sign in to keep decks and collections on any device.",
+    body: "Import a ManaBox or Moxfield export and Brewhall builds from your cards first, then tells you which few pickups would round the deck out. Sign in to keep decks and collections on any device.",
   },
 ];
 
@@ -457,6 +457,9 @@ export default function SetupView({
             </div>
           ))}
         </div>
+        <p className="text-center text-sm text-parchment/50 mt-6">
+          More on brackets, prices and exporting in the <a href="/faq.html" className="cf-link">questions and answers</a>.
+        </p>
       </section>
     </div>
   );

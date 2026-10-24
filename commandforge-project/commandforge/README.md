@@ -205,6 +205,13 @@ The site is ready for Google AdSense but shows no ads until you switch it on:
 
 Ads never load in the Android or iOS app, since AdSense is for websites only.
 
+## Getting found and shared
+
+- **Link previews.** Links to the site show the Brewhall image and description (`public/og-image.png`, tags in `index.html`). Shared deck links show the deck's name, commander and the commander's art instead; `netlify/edge-functions/deck-preview.js` writes those in, using the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as the site. To check one, paste a shared deck link into https://www.opengraph.xyz or a Discord message.
+- **Commander links.** `https://brewhall.co.uk/?commander=<name>` opens the builder with that commander picked, e.g. `?commander=Krenko, Mob Boss`. Handy when replying to "help me build" posts.
+- **Search engines.** `public/sitemap.xml` lists the pages and `robots.txt` points to it. Add the site in Google Search Console (https://search.google.com/search-console) and submit `https://brewhall.co.uk/sitemap.xml` there once.
+- **Analytics.** Make a free account at https://umami.is, add `brewhall.co.uk` as a website, and add its Website ID as `VITE_UMAMI_WEBSITE_ID` in Netlify's environment variables, then redeploy. Umami sets no cookies, so it needs no consent banner. Besides visits it records these actions: `deck-built`, `deck-saved`, `deck-shared`, `deck-link-sent`, `deck-exported`, `shared-deck-opened`, `brew-from-shared-deck` and `commander-link-opened`. It's off in the Android and iOS apps.
+
 ## Installing it like an app
 
 **From the website (free, works today).** On an Android phone, open brewhall.co.uk in Chrome and tap **Install app** (or menu > **Add to Home screen**). On an iPhone, open it in Safari, tap **Share** > **Add to Home Screen**. On a computer, Chrome and Edge show an install button in the address bar. It then opens full screen with its own icon, like any other app.

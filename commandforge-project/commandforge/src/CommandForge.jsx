@@ -11,11 +11,12 @@ import { buildDeckFromCollection } from "./lib/buildFromCollection";
 import { parseCollectionText, fetchCollectionCards, mergeEntries, ownedCommanders, playableCount } from "./lib/collection";
 import { HOUSE_NAMES } from "./lib/colors";
 import { isExtraTurn } from "./lib/bracketRules";
-import { mapDeckRow, shareUrl, sharedDeckIdFromUrl } from "./lib/shareDeck";
+import { commanderFromUrl, mapDeckRow, sendLink, shareUrl, sharedDeckIdFromUrl } from "./lib/shareDeck";
 import { archidektList, cardmarketList, moxfieldList, neededList } from "./lib/exportDeck";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import { loadAdSense } from "./lib/ads";
+import { loadAnalytics, track } from "./lib/analytics";
 import { fetchEnabledProviders, startOAuthSignIn, waitForNativeSignIn } from "./lib/oauth";
 import SaveDeckModal from "./components/SaveDeckModal";
 import AuthModal from "./components/AuthModal";
@@ -80,13 +81,17 @@ export default function CommandForge() {
   // Loads Google's ad script (and with it the cookie consent message) when
   // AdSense is configured; does nothing otherwise.
   useEffect(() => loadAdSense(), []);
+  useEffect(() => loadAnalytics(), []);
 
   // A share link (?deck=<id>) opens straight onto that deck.
   const [sharedDeckId] = useState(() => sharedDeckIdFromUrl(window.location.href));
   const [view, setView] = useState(sharedDeckId ? "shared" : "setup");
   const [sharedDeck, setSharedDeck] = useState({ status: sharedDeckId ? "loading" : "idle", deck: null });
   const [shareStatus, setShareStatus] = useState(null); // { id, state: "copied" | "error" }
-  const [search, setSearch] = useState("");
+  // A commander link (?commander=<name>) starts the search with that name,
+  // which picks the commander once Scryfall finds it.
+  const [linkedCommander] = useState(() => (sharedDeckId ? null : commanderFromUrl(window.location.href)));
+  const [search, setSearch] = useState(linkedCommander || "");
   const [selectedCommander, setSelectedCommander] = useState(null);
   const [bracket, setBracket] = useState(null);
   const [inspired, setInspired] = useState(false);
@@ -154,6 +159,7 @@ export default function CommandForge() {
     supabase.rpc("get_shared_deck", { deck_id: sharedDeckId }).then(({ data, error }) => {
       const row = Array.isArray(data) ? data[0] : null;
       setSharedDeck(error || !row ? { status: "missing", deck: null } : { status: "ready", deck: mapDeckRow(row) });
+      track(error || !row ? "shared-deck-missing" : "shared-deck-opened");
     });
   }, [sharedDeckId]);
 
@@ -164,6 +170,13 @@ export default function CommandForge() {
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, [view]);
+
+  // The same for a commander link once it has filled in the search.
+  useEffect(() => {
+    if (!linkedCommander) return;
+    track("commander-link-opened");
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [linkedCommander]);
 
   // Track the Supabase auth session for the lifetime of the app.
   useEffect(() => {
@@ -612,6 +625,7 @@ export default function CommandForge() {
       };
       setCardData({ ...built.cardData, [commander.name.toLowerCase()]: commanderEntry });
       setCardDataStatus("done");
+      track("deck-built", { bracket: activeBracket.name, style: useCollection ? "collection" : buildStyle });
     } catch {
       setCardDataStatus("error");
     } finally {
@@ -701,6 +715,7 @@ export default function CommandForge() {
     // Saving again updates this one rather than making another copy.
     setDeck((d) => (d ? { ...d, savedId: data.id, savedName: name } : d));
     setSavedNotice(true);
+    track("deck-saved");
     await refreshSavedDecks();
     setSaveModalOpen(false);
     setDeckName("");
@@ -879,6 +894,7 @@ export default function CommandForge() {
       await navigator.clipboard.writeText(text);
       setCopyError(null);
       setCopied(target);
+      track("deck-exported", { target });
       setTimeout(() => setCopied((c) => (c === target ? null : c)), 2500);
     } catch {
       setCopyError(target);
@@ -920,6 +936,7 @@ export default function CommandForge() {
       setShareStatus({ id: d.id, state: "stopped" });
       return;
     }
+    track("deck-shared");
     try {
       await navigator.clipboard.writeText(shareUrl(d.id));
       setShareStatus({ id: d.id, state: "copied" });
@@ -935,6 +952,21 @@ export default function CommandForge() {
     // If the delete didn't go through, put the list back as it really is
     // rather than leaving a deck that reappears on the next visit.
     if (error) await refreshSavedDecks();
+  }
+
+  // Passes a deck's link on: the share sheet on phones, the clipboard
+  // elsewhere. Returns what happened, for the button to show.
+  async function sendDeckLink(d) {
+    const result = await sendLink({ title: `${d.deckName} · ${d.commander} Commander deck`, url: shareUrl(d.id) });
+    if (result === "sent" || result === "copied") track("deck-link-sent", { via: result === "sent" ? "share-sheet" : "clipboard" });
+    return result;
+  }
+
+  // From a shared deck: start a deck of their own with the same commander.
+  function brewCommander(name) {
+    reset();
+    setSearch(name);
+    track("brew-from-shared-deck");
   }
 
   function reset() {
@@ -1066,7 +1098,9 @@ export default function CommandForge() {
               copied={copied}
               copyDeck={copyDeck}
               copyError={copyError}
+              brewCommander={brewCommander}
               reset={reset}
+              sendDeckLink={sendDeckLink}
               setPreviewCard={setPreviewCard}
               sharedDeck={sharedDeck}
             />
@@ -1074,6 +1108,7 @@ export default function CommandForge() {
 
           {view === "decks" && (
             <MyDecksView
+              sendDeckLink={sendDeckLink}
               shareStatus={shareStatus}
               toggleShare={toggleShare}
               copied={copied}

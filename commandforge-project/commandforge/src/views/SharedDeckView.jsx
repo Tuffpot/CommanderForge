@@ -1,4 +1,5 @@
-import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { Check, Loader2, Share2 } from "lucide-react";
 import CardRow from "../components/CardRow";
 import ColorPips from "../components/ColorPips";
 import DeckStats from "../components/DeckStats";
@@ -7,7 +8,9 @@ import { CAT_LABELS } from "../lib/buildDeck";
 
 // A deck someone shared with a link. Read-only: anyone can look, copy it to
 // another site, or go and brew their own.
-export default function SharedDeckView({ copied, copyDeck, copyError, reset, setPreviewCard, sharedDeck }) {
+export default function SharedDeckView({ brewCommander, copied, copyDeck, copyError, reset, sendDeckLink, setPreviewCard, sharedDeck }) {
+  const [sent, setSent] = useState(null); // "sent" | "copied" | "failed"
+
   if (sharedDeck.status === "loading") {
     return (
       <p className="text-sm text-parchment/50 flex items-center justify-center gap-2 py-16">
@@ -44,8 +47,22 @@ export default function SharedDeckView({ copied, copyDeck, copyError, reset, set
               {d.commander} · {d.bracketName}
             </p>
           </div>
-          <ColorPips identity={d.identity} />
+          <div className="flex items-center gap-3">
+            <ColorPips identity={d.identity} />
+            <button
+              onClick={async () => {
+                const result = await sendDeckLink(d);
+                if (result !== "cancelled") setSent(result);
+              }}
+              className="cf-btn-quiet px-3 py-2 text-xs gap-1.5"
+              title="Send this deck's link to a friend"
+            >
+              {sent === "sent" || sent === "copied" ? <Check size={14} className="text-green-400" /> : <Share2 size={14} />}
+              {sent === "copied" ? "Link copied" : "Share"}
+            </button>
+          </div>
         </div>
+        {sent === "failed" && <p className="text-xs text-red-300/80 mt-2">Couldn't copy the link. You can copy it from the address bar.</p>}
       </div>
 
       <DeckStats picks={d.picks} cardData={cardData} />
@@ -82,8 +99,13 @@ export default function SharedDeckView({ copied, copyDeck, copyError, reset, set
       </div>
 
       <div className="text-center">
-        <p className="text-sm text-parchment/55 mb-4">Want one like it? Pick any commander and Brewhall builds the 99 in seconds.</p>
-        <button onClick={reset} className="cf-btn-primary px-6 py-3">Brew your own deck</button>
+        <p className="text-sm text-parchment/55 mb-4">Want one like it? Brewhall builds the 99 in seconds, to your own bracket and budget.</p>
+        <button onClick={() => brewCommander(d.commander)} className="cf-btn-primary px-6 py-3">Brew your own {d.commander} deck</button>
+        <p className="mt-3">
+          <button onClick={reset} className="text-xs font-semibold text-parchment/60 hover:text-parchment underline underline-offset-2">
+            or pick a different commander
+          </button>
+        </p>
       </div>
     </div>
   );

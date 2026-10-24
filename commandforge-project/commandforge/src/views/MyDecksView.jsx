@@ -20,6 +20,7 @@ export default function MyDecksView({
   openingDeckId,
   savedDecks,
   session,
+  sendDeckLink,
   shareStatus,
   toggleShare,
   setPreviewCard,
@@ -105,7 +106,7 @@ export default function MyDecksView({
             {openDeckError?.id === d.id && <p className="text-xs text-red-300/80 mt-2">{openDeckError.message}</p>}
 
             {shareStatus?.id === d.id && (
-              <ShareNote state={shareStatus.state} deckId={d.id} />
+              <ShareNote state={shareStatus.state} deck={d} sendDeckLink={sendDeckLink} />
             )}
 
             {viewingSaved?.id === d.id && (
@@ -179,7 +180,10 @@ export default function MyDecksView({
   );
 }
 
-function ShareNote({ state, deckId }) {
+function ShareNote({ state, deck, sendDeckLink }) {
+  const deckId = deck.id;
+  // Phones get a button for their share sheet (Messages, Discord, WhatsApp…).
+  const canShare = typeof navigator !== "undefined" && Boolean(navigator.share);
   if (state === "error") {
     return <p className="text-xs text-red-300/80 mt-2">Couldn't change sharing for this deck. Please try again.</p>;
   }
@@ -190,6 +194,11 @@ function ShareNote({ state, deckId }) {
     <p className="text-xs text-parchment/60 mt-2 break-all">
       {state === "copied" ? "Link copied. Anyone with it can see this deck, but not change it: " : "Anyone with this link can see the deck: "}
       <a href={shareUrl(deckId)} className="cf-link">{shareUrl(deckId)}</a>
+      {canShare && (
+        <button onClick={() => sendDeckLink(deck)} className="ml-2 font-semibold cf-gold underline underline-offset-2">
+          Send to…
+        </button>
+      )}
     </p>
   );
 }

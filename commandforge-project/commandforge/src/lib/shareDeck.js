@@ -44,3 +44,40 @@ export function mapDeckRow(row) {
     shared: Boolean(row.shared),
   };
 }
+
+// A link that opens the builder with a commander already picked:
+// https://brewhall.co.uk/?commander=Atraxa%2C%20Praetors%27%20Voice. Handy for
+// replying to "help me build X" posts.
+export function commanderUrl(name) {
+  return `${SITE_URL}/?commander=${encodeURIComponent(name)}`;
+}
+
+// The commander named in a page address, or null when there isn't one.
+export function commanderFromUrl(href) {
+  try {
+    const name = new URL(href).searchParams.get("commander")?.trim();
+    return name && name.length <= 150 ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+// Hands a link to the phone's share sheet (Messages, Discord, WhatsApp…)
+// where there is one, and copies it everywhere else. Says which happened:
+// "sent", "copied", "cancelled" or "failed".
+export async function sendLink({ title, url }, nav = typeof navigator !== "undefined" ? navigator : null) {
+  if (nav?.share) {
+    try {
+      await nav.share({ title, url });
+      return "sent";
+    } catch (e) {
+      if (e?.name === "AbortError") return "cancelled";
+    }
+  }
+  try {
+    await nav.clipboard.writeText(url);
+    return "copied";
+  } catch {
+    return "failed";
+  }
+}

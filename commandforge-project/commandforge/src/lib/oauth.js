@@ -13,7 +13,7 @@ export const OAUTH_PROVIDERS = [
 // The Android and iOS apps can't be sent back to a web address after signing
 // in, so Supabase sends them to this app link instead. It must also be in
 // Supabase's list of allowed Redirect URLs.
-export const NATIVE_REDIRECT_URL = "uk.co.commanderforge.app://auth-callback";
+export const NATIVE_REDIRECT_URL = "uk.co.brewhall.app://auth-callback";
 
 // Supabase's public settings say which providers are switched on.
 export async function fetchEnabledProviders(supabaseUrl, anonKey, fetchFn = fetch) {

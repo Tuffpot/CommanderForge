@@ -96,6 +96,18 @@ export function mergeEntries(...lists) {
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// Sets how many copies of one card the collection holds, adding it if it
+// isn't there yet. Zero (or less) takes the card out altogether.
+export function setEntryQty(entries, name, qty) {
+  const key = name.toLowerCase();
+  const n = Math.max(0, Math.floor(qty) || 0);
+  const others = entries.filter((e) => e.name.toLowerCase() !== key);
+  if (!n) return others;
+  const prev = entries.find((e) => e.name.toLowerCase() === key);
+  if (prev) return entries.map((e) => (e === prev ? { ...e, qty: n } : e));
+  return mergeEntries(others, [{ name, qty: n }]);
+}
+
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Looks the collection up on Scryfall, 75 cards per request (the most the

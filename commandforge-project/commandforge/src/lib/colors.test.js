@@ -26,11 +26,11 @@ describe("describeDeck", () => {
   it("names the style, commander, bracket and colours", () => {
     const text = describeDeck({ ...base, style: "edhrec" });
     expect(text).toMatch(/^An EDHREC-inspired build around Edgar Markov, aimed at Bracket 2 \(Core\) power level in Mardu colors\./);
-    expect(text).toContain("token creatures");
+    expect(text).toContain("Edgar Markov fills the board with tokens");
   });
 
   it("prefers a typed theme over the guessed archetype", () => {
-    expect(describeDeck({ ...base, style: "edhrec", theme: "Lifegain" })).toContain("gains large amounts of life");
+    expect(describeDeck({ ...base, style: "edhrec", theme: "Lifegain" })).toContain("With Edgar Markov at the helm, the deck gains large amounts of life");
     expect(describeDeck({ ...base, style: "edhrec", theme: "Vampires" })).toContain("a vampires gameplan");
   });
 

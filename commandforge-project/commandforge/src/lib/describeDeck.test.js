@@ -58,4 +58,9 @@ describe("strategyBlurb", () => {
     expect(strategyBlurb({ commander: { name: "Krenko, Mob Boss", oracleText: null, archetype: null } }))
       .toMatch(/^Krenko anchors a flexible, value-driven game/);
   });
+
+  it("explains card advantage for newer players", () => {
+    expect(strategyBlurb({ commander: { name: "Krenko, Mob Boss", oracleText: null, archetype: null } }))
+      .toContain("card advantage (more cards in hand and on the board than your opponents).");
+  });
 });

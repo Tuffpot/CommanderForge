@@ -1,6 +1,7 @@
 import { houseNameForColors } from "./colors";
 import { normalizeThemeKey, singularType, THEME_SUGGESTIONS } from "./queries";
 
+// "Card advantage" gets a plain-English gloss in brackets for newer players.
 // One-sentence gameplan for each curated archetype, used when the deck's
 // theme isn't what its commander does on its own (a Krenko deck built for
 // lifegain), so the commander is named but none of its abilities assumed.
@@ -11,7 +12,7 @@ export const ARCHETYPE_BLURBS = {
   graveyard: "the deck fills its graveyard and recurs threats from it, turning removal into a resource rather than a setback.",
   counters: "the deck piles +1/+1 counters onto its creatures, scaling into a dominant late-game board.",
   wheels: "the deck forces everyone to draw and discard, refilling its own hand while disrupting the table.",
-  ninjas: "the deck slips unblocked attackers in and out of combat to chain Ninjutsu triggers and card advantage.",
+  ninjas: "the deck slips unblocked attackers in and out of combat to chain Ninjutsu triggers and card advantage (more cards in hand and on the board than your opponents).",
   enchantments: "the deck stacks up enchantments for incremental value and powerful constellation-style triggers.",
   bigmana: "the deck ramps hard into a handful of huge threats, aiming to simply outsize the table.",
   lifegain: "the deck gains large amounts of life and turns that life total into a real engine for winning.",
@@ -107,8 +108,8 @@ const PERSONAL_BLURBS = {
     : `${n} rewards every +1/+1 counter you place, so the deck spreads them wide and snowballs into a dominant late-game board.`,
   wheels: (n, f) => `${n} ${f.payoff === "drain" || f.payoff === "damage" ? "punishes opponents for every card they draw" : "thrives on everyone drawing and discarding"}, so the deck wheels hands to refill itself and disrupt the table.`,
   ninjas: (n, f) => f.selfNinjutsu
-    ? `${n} sneaks in off any unblocked attacker, so the deck swarms with cheap evasive creatures and swaps Ninjas into combat for card advantage.`
-    : `${n} rewards every unblocked attacker, so the deck slips Ninjas in and out of combat to chain triggers and card advantage.`,
+    ? `${n} sneaks in off any unblocked attacker, so the deck swarms with cheap evasive creatures and swaps Ninjas into combat for card advantage (more cards in hand and on the board than your opponents).`
+    : `${n} rewards every unblocked attacker, so the deck slips Ninjas in and out of combat to chain triggers and card advantage (more cards in hand and on the board than your opponents).`,
   enchantments: (n, f) => f.payoff
     ? `${n} ${payoffPhrase(f)} as your enchantments pile up, so the deck stacks enchantments for a steady stream of value.`
     : `${n} grows stronger with every enchantment you control, so the deck stacks them up for incremental value and constellation triggers.`,
@@ -125,7 +126,7 @@ function freeformBlurb(n, f) {
   if (f.leaning) return PERSONAL_BLURBS[f.leaning](n, f);
   if (f.tribe) return `${n} leads a ${f.tribe} army, so the deck packs as many ${f.tribe} creatures as it can and wins on the strength of the team.`;
   if (f.trigger && f.payoff) return `${n} ${payoffPhrase(f)}${attackTail(f)}, so the deck protects it and keeps it in combat while the value adds up.`;
-  return `${n} anchors a flexible, value-driven game, with the deck developing its board, answering threats and grinding out card advantage.`;
+  return `${n} anchors a flexible, value-driven game, with the deck developing its board, answering threats and grinding out card advantage (more cards in hand and on the board than your opponents).`;
 }
 
 export function strategyBlurb(deck) {

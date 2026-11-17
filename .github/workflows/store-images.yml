@@ -37,11 +37,3 @@ jobs:
         with:
           name: brewhall-store-images
           path: commandforge-project/commandforge/store/out/
-      - name: Preview (temporary)
-        run: |
-          sudo apt-get install -y imagemagick >/dev/null 2>&1 || true
-          cd out
-          convert phone-1.png phone-2.png phone-3.png phone-4.png -resize 216x384 +append -quality 70 p.jpg
-          convert feature-graphic.png -resize 512x250 -quality 75 f.jpg
-          echo "P_BEGIN"; base64 -w0 p.jpg; echo; echo "P_END"
-          echo "F_BEGIN"; base64 -w0 f.jpg; echo; echo "F_END"

@@ -8,6 +8,21 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# The site moved from commanderforge.co.uk to brewhall.co.uk. Send the old
+# address to the same page on the new one, so search engines and Google
+# AdSense see one site rather than two copies of it.
+[[redirects]]
+  from = "https://commanderforge.co.uk/*"
+  to = "https://brewhall.co.uk/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.commanderforge.co.uk/*"
+  to = "https://brewhall.co.uk/:splat"
+  status = 301
+  force = true
+
 # Browsers and bots ask for /favicon.ico by default; send them the SVG icon
 # instead of a "not found".
 [[redirects]]

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
-  parseCollectionText, mergeEntries, fetchCollectionCards, canBeCommander, CATEGORY_TESTS, fullText, playableCount,
+  parseCollectionText, mergeEntries, setEntryQty, fetchCollectionCards, canBeCommander, CATEGORY_TESTS, fullText, playableCount,
 } from "./collection";
 import { buildDeckFromCollection } from "./buildFromCollection";
 import { BRACKETS } from "./buildDeck";
@@ -158,5 +158,22 @@ describe("buildDeckFromCollection", () => {
 
   it("counts the cards a commander could play", () => {
     expect(playableCount({ name: "Simic Boss", color_identity: ["G", "U"] }, collection(1))).toBe(10 + 20);
+  });
+});
+
+describe("setEntryQty", () => {
+  const entries = [{ name: "Island", qty: 4 }, { name: "Sol Ring", qty: 2 }];
+
+  it("changes one card's count, whatever the case of its name", () => {
+    expect(setEntryQty(entries, "sol ring", 3)).toEqual([{ name: "Island", qty: 4 }, { name: "Sol Ring", qty: 3 }]);
+  });
+
+  it("takes the card out at zero", () => {
+    expect(setEntryQty(entries, "Island", 0)).toEqual([{ name: "Sol Ring", qty: 2 }]);
+    expect(setEntryQty(entries, "Island", -1)).toEqual([{ name: "Sol Ring", qty: 2 }]);
+  });
+
+  it("puts a card back in name order", () => {
+    expect(setEntryQty([{ name: "Sol Ring", qty: 2 }], "Island", 4)).toEqual(entries);
   });
 });

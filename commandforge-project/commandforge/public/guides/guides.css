@@ -1,0 +1,26 @@
+/* Shared look for the static guide pages; matches faq.html. */
+body {
+  margin: 0;
+  background: #0b0812;
+  color: rgba(243, 234, 219, 0.82);
+  font: 16px/1.7 "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 720px; margin: 0 auto; padding: 40px 20px 64px; }
+h1, h2 { color: #f3eadb; line-height: 1.25; font-family: "Fraunces", Georgia, serif; font-weight: 600; }
+h1 { font-size: 34px; margin: 0 0 6px; }
+h2 { font-size: 21px; margin: 36px 0 8px; color: #e3b25c; }
+h3 { color: #f3eadb; font-size: 17px; margin: 24px 0 4px; }
+a { color: #e3b25c; }
+.muted { color: rgba(255, 255, 255, 0.5); font-size: 13px; }
+.lede { font-size: 18px; color: rgba(243, 234, 219, 0.9); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 12px 0; display: block; overflow-x: auto; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+th { color: #fff; }
+.callout { border: 1px solid rgba(227, 178, 92, 0.35); background: rgba(227, 178, 92, 0.07); border-radius: 12px; padding: 14px 18px; margin: 24px 0; }
+.cards li { margin: 6px 0; }
+.guide-list { list-style: none; padding: 0; }
+.guide-list li { border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding: 16px 0; }
+.guide-list a { font-family: "Fraunces", Georgia, serif; font-size: 20px; text-decoration: none; }
+.guide-list p { margin: 4px 0 0; }
+nav.crumbs { font-size: 14px; display: flex; gap: 16px; flex-wrap: wrap; }
+footer { margin-top: 48px; }

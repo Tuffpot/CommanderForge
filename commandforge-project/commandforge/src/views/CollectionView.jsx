@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { Library, Loader2, Sparkles, Trash2, Upload, User } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Library, Loader2, Minus, Plus, Search, Sparkles, Trash2, Upload, User } from "lucide-react";
+
+const PAGE_SIZE = 50;
 
 export default function CollectionView({
   clearCollection,
@@ -13,12 +15,35 @@ export default function CollectionView({
   importing,
   notFound,
   openAuthModal,
+  ownedCards,
   session,
+  setCardQty,
   startCollectionBuild,
 }) {
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState("");
+  const [filter, setFilter] = useState("");
+  const [shown, setShown] = useState(PAGE_SIZE);
+  const [removed, setRemoved] = useState(null);
   const totalCards = collection.reduce((s, e) => s + e.qty, 0);
+
+  const matching = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    return q ? collection.filter((e) => e.name.toLowerCase().includes(q)) : collection;
+  }, [collection, filter]);
+
+  function changeQty(entry, qty) {
+    if (qty < 1) setRemoved({ name: entry.name, qty: entry.qty });
+    else if (removed?.name === entry.name) setRemoved(null);
+    setCardQty(entry.name, qty);
+  }
+
+  function undoRemove() {
+    if (!removed) return;
+    const { name, qty } = removed;
+    setRemoved(null);
+    setCardQty(name, qty);
+  }
 
   async function readFile(e) {
     const file = e.target.files?.[0];
@@ -83,6 +108,80 @@ export default function CollectionView({
         )}
         {collectionError && <p className="text-xs text-red-300/80 mt-3">{collectionError}</p>}
       </div>
+
+      {collection.length > 0 && (
+        <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-5">
+          <h2 className="cf-display text-lg text-parchment mb-3">Your cards</h2>
+          {collection.length > 10 && (
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-parchment/40 pointer-events-none" />
+              <input
+                type="search"
+                value={filter}
+                onChange={(e) => {
+                  setFilter(e.target.value);
+                  setShown(PAGE_SIZE);
+                }}
+                placeholder="Find a card"
+                aria-label="Find a card in your collection"
+                className="cf-field py-2.5 pl-9"
+              />
+            </div>
+          )}
+          {removed && (
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-parchment/70" role="status">
+              <span className="min-w-0 truncate">Removed {removed.name}</span>
+              <button onClick={undoRemove} className="cf-gold font-semibold underline underline-offset-2 shrink-0">Undo</button>
+            </div>
+          )}
+          {matching.length === 0 ? (
+            <p className="text-sm text-parchment/50">No cards match “{filter.trim()}”.</p>
+          ) : (
+            <ul className="divide-y divide-white/[0.06]">
+              {matching.slice(0, shown).map((entry) => {
+                const type = ownedCards[entry.name.toLowerCase()]?.type_line;
+                return (
+                  <li key={entry.name} className="flex items-center gap-2 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-parchment truncate">{entry.name}</p>
+                      {type && <p className="text-[11px] text-parchment/40 truncate">{type}</p>}
+                    </div>
+                    <div className="flex items-center shrink-0">
+                      <button
+                        onClick={() => changeQty(entry, entry.qty - 1)}
+                        aria-label={entry.qty === 1 ? `Remove ${entry.name}` : `One fewer ${entry.name}`}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg text-parchment/60 hover:text-parchment hover:bg-white/[0.06]"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className="w-8 text-center text-sm cf-mono text-parchment/90" aria-label={`${entry.qty} owned`}>{entry.qty}</span>
+                      <button
+                        onClick={() => changeQty(entry, entry.qty + 1)}
+                        aria-label={`One more ${entry.name}`}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg text-parchment/60 hover:text-parchment hover:bg-white/[0.06]"
+                      >
+                        <Plus size={14} />
+                      </button>
+                      <button
+                        onClick={() => changeQty(entry, 0)}
+                        aria-label={`Remove ${entry.name}`}
+                        className="ml-1 w-9 h-9 flex items-center justify-center rounded-lg text-red-300/70 hover:text-red-300 hover:bg-red-500/10"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {matching.length > shown && (
+            <button onClick={() => setShown((n) => n + PAGE_SIZE * 4)} className="w-full mt-3 py-2.5 cf-btn-quiet">
+              Show more ({(matching.length - shown).toLocaleString()} left)
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="cf-panel rounded-2xl p-5 sm:p-6 mb-5">
         <h2 className="cf-display text-lg text-parchment mb-2">Import cards</h2>

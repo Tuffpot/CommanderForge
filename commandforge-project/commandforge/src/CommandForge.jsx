@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase, supabaseUrl, supabaseAnonKey } from "./supabaseClient";
 import { buildNameQuery, filterAndSortByName, buildColorQuery, resolveThemeQuery } from "./lib/queries";
 import { scryfallSearchCommanders, scryfallRandomCommander, mapScryfallCardToCommander, mapScryfallCard, fetchCardsByName, fetchCheapestPrintings, fetchScryfallData } from "./lib/scryfall";
@@ -8,7 +8,7 @@ import { parseNameList, resolveIncludes, roleFor } from "./lib/cardLists";
 import { addCard, deckHas, evenOutWithBasics, removeCard } from "./lib/editDeck";
 import { fetchEdhrecCards } from "./lib/edhrec";
 import { buildDeckFromCollection } from "./lib/buildFromCollection";
-import { parseCollectionText, fetchCollectionCards, mergeEntries, ownedCommanders, playableCount } from "./lib/collection";
+import { parseCollectionText, fetchCollectionCards, mergeEntries, setEntryQty, ownedCommanders, playableCount } from "./lib/collection";
 import { HOUSE_NAMES } from "./lib/colors";
 import { isExtraTurn } from "./lib/bracketRules";
 import { commanderFromUrl, mapDeckRow, sendLink, shareUrl, sharedDeckIdFromUrl } from "./lib/shareDeck";
@@ -312,6 +312,35 @@ export default function CommandForge() {
       setImporting(false);
       setImportProgress(null);
     }
+  }
+
+  // Changes how many of one card the collection holds, or takes it out at
+  // zero. The list updates straight away; saves run one after another so
+  // quick taps on + and - land in order.
+  // A removed card's Scryfall data is kept aside so Undo can put it back.
+  const collectionSaves = useRef(Promise.resolve());
+  const removedCardData = useRef({});
+  function setCardQty(name, qty) {
+    const key = name.toLowerCase();
+    const entries = setEntryQty(collection, name, qty);
+    setCollection(entries);
+    setCollectionError("");
+    if (!entries.some((e) => e.name.toLowerCase() === key)) {
+      if (ownedCards[key]) removedCardData.current[key] = ownedCards[key];
+      setOwnedCards((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      if (!entries.length) setUseCollection(false);
+    } else if (!ownedCards[key] && removedCardData.current[key]) {
+      const card = removedCardData.current[key];
+      setOwnedCards((prev) => ({ ...prev, [key]: card }));
+    }
+    collectionSaves.current = collectionSaves.current.then(async () => {
+      const saveError = await saveCollection(entries);
+      if (saveError) setCollectionError(saveError);
+    });
   }
 
   async function clearCollection() {
@@ -1082,6 +1111,8 @@ export default function CommandForge() {
               collectionError={collectionError}
               collectionStatus={collectionStatus}
               commanderCount={ownedCommanderList.length}
+              ownedCards={ownedCards}
+              setCardQty={setCardQty}
               importCollection={importCollection}
               importError={importError}
               importProgress={importProgress}

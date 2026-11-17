@@ -1,4 +1,4 @@
-package uk.co.commanderforge.app;
+package uk.co.brewhall.app;
 
 import com.getcapacitor.BridgeActivity;
 

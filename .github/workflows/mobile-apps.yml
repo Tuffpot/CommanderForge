@@ -46,6 +46,21 @@ jobs:
       - run: npx cap sync android
       - run: ./gradlew assembleDebug
         working-directory: commandforge-project/commandforge/android
+      # Proves the signed Google Play build still works, using a throwaway
+      # key made on the spot (the real one is only used by google-play.yml).
+      - name: Build a signed app bundle with a throwaway key
+        working-directory: commandforge-project/commandforge/android
+        env:
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: throwaway
+          ANDROID_UPLOAD_KEY_ALIAS: upload
+          ANDROID_UPLOAD_KEY_PASSWORD: throwaway
+        run: |
+          export ANDROID_UPLOAD_KEYSTORE_PATH="$RUNNER_TEMP/throwaway.jks"
+          keytool -genkeypair -keystore "$ANDROID_UPLOAD_KEYSTORE_PATH" -alias upload \
+            -keyalg RSA -keysize 2048 -validity 10000 -storepass throwaway -keypass throwaway \
+            -dname "CN=Throwaway" -noprompt
+          ./gradlew bundleRelease
+          jarsigner -verify app/build/outputs/bundle/release/app-release.aab
       - uses: actions/upload-artifact@v4
         with:
           name: commander-forge-android-test

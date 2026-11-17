@@ -24,7 +24,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="uk.co.commanderforge.app" android:host="auth-callback" />
+                <data android:scheme="uk.co.brewhall.app" android:host="auth-callback" />
             </intent-filter>
         </activity>
 

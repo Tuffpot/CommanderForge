@@ -229,6 +229,8 @@ npm run app:sync
 
 Make sure your `.env` file has the Supabase values before building, or sign-in won't work in the app.
 
+**Google Play upload file.** On GitHub, go to **Actions > Google Play build > Run workflow**. It makes the signed `.aab` file you upload in the Play Console (download **brewhall-google-play** from the bottom of the finished run). It needs the upload key and Supabase values as repository secrets; the list is at the top of `.github/workflows/google-play.yml`.
+
 The **Mobile apps** check on GitHub builds both apps on every change. Each run's page has a test Android APK to download and install on a phone.
 
 To change the app icon or splash screen, replace the images in `assets/` and run `npx @capacitor/assets generate`.

@@ -1,0 +1,78 @@
+# Makes the file you upload to Google Play (an .aab "app bundle"), signed with
+# your upload key. Run it from GitHub: Actions > Google Play build > Run
+# workflow. When it finishes, download "brewhall-google-play" from the bottom
+# of the run's page and upload the .aab inside it in the Play Console.
+#
+# Needs these repository secrets (Settings > Secrets and variables > Actions):
+#   ANDROID_UPLOAD_KEYSTORE           the upload key file, base64-encoded
+#   ANDROID_UPLOAD_KEYSTORE_PASSWORD  its password
+#   ANDROID_UPLOAD_KEY_ALIAS          its alias ("upload")
+#   ANDROID_UPLOAD_KEY_PASSWORD       the key's password
+#   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY  so sign-in works in the app
+name: Google Play build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version shown in the store, e.g. 1.0 or 1.1"
+        required: true
+        default: "1.0"
+
+defaults:
+  run:
+    working-directory: commandforge-project/commandforge
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - name: Check the secrets are set
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+        run: |
+          missing=""
+          [ -n "$KEYSTORE" ] || missing="$missing ANDROID_UPLOAD_KEYSTORE"
+          [ -n "$VITE_SUPABASE_URL" ] || missing="$missing VITE_SUPABASE_URL"
+          [ -n "$VITE_SUPABASE_ANON_KEY" ] || missing="$missing VITE_SUPABASE_ANON_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Add these repository secrets first:$missing"
+            exit 1
+          fi
+        working-directory: .
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: commandforge-project/commandforge/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Build the signed app bundle
+        working-directory: commandforge-project/commandforge/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          # Each run gets a higher number, which Google Play requires.
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          export ANDROID_UPLOAD_KEYSTORE_PATH="$RUNNER_TEMP/upload.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$ANDROID_UPLOAD_KEYSTORE_PATH"
+          ./gradlew bundleRelease
+          rm "$ANDROID_UPLOAD_KEYSTORE_PATH"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: brewhall-google-play
+          path: commandforge-project/commandforge/android/app/build/outputs/bundle/release/app-release.aab

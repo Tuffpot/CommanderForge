@@ -1,0 +1,39 @@
+# Makes the Google Play store banner and phone screenshots from the live site.
+# Run it from GitHub: Actions > Store images > Run workflow, then download
+# "brewhall-store-images" from the bottom of the finished run.
+name: Store images
+
+on:
+  pull_request:
+    paths:
+      - "commandforge-project/commandforge/store/**"
+      - ".github/workflows/store-images.yml"
+  workflow_dispatch:
+    inputs:
+      commander:
+        description: "Commander to show in the deck screenshots"
+        required: true
+        default: "Atraxa, Praetors' Voice"
+
+defaults:
+  run:
+    working-directory: commandforge-project/commandforge/store
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm init -y >/dev/null && npm install --no-save playwright@1.49.1
+      - run: npx playwright install --with-deps chromium
+      - run: node screenshots.mjs
+        env:
+          COMMANDER: ${{ inputs.commander || "Atraxa, Praetors' Voice" }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: brewhall-store-images
+          path: commandforge-project/commandforge/store/out/
